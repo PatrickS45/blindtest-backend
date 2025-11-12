@@ -1,4 +1,4 @@
-// server.js - VERSION CORRIGÉE avec tous les bugs fixes
+// server.js - VERSION FINALE CORRIGÉE
 
 const express = require('express');
 const http = require('http');
@@ -25,6 +25,74 @@ function generateRoomCode() {
   }
   return code;
 }
+
+// 🆕 VRAIE PLAYLIST COMPLÈTE AVEC URLS DE TEST
+const getMockPlaylist = () => ({
+  id: '1234567',
+  title: 'Blind test années 90-2000 ✨',
+  tracks: [
+    {
+      id: 1,
+      title: "Don't Stop The Music",
+      artist: { name: "Rihanna" },
+      preview: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" // URL de test valide
+    },
+    {
+      id: 2,
+      title: "Umbrella",
+      artist: { name: "Rihanna" },
+      preview: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3"
+    },
+    {
+      id: 3,
+      title: "Toxic",
+      artist: { name: "Britney Spears" },
+      preview: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3"
+    },
+    {
+      id: 4,
+      title: "Crazy In Love",
+      artist: { name: "Beyoncé" },
+      preview: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3"
+    },
+    {
+      id: 5,
+      title: "Single Ladies",
+      artist: { name: "Beyoncé" },
+      preview: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3"
+    },
+    {
+      id: 6,
+      title: "Hips Don't Lie",
+      artist: { name: "Shakira" },
+      preview: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3"
+    },
+    {
+      id: 7,
+      title: "Poker Face",
+      artist: { name: "Lady Gaga" },
+      preview: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-7.mp3"
+    },
+    {
+      id: 8,
+      title: "Bad Romance",
+      artist: { name: "Lady Gaga" },
+      preview: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3"
+    },
+    {
+      id: 9,
+      title: "Stronger",
+      artist: { name: "Kanye West" },
+      preview: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-9.mp3"
+    },
+    {
+      id: 10,
+      title: "Rehab",
+      artist: { name: "Amy Winehouse" },
+      preview: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-10.mp3"
+    }
+  ]
+});
 
 // Fonction pour sélectionner un track NON DÉJÀ JOUÉ
 function selectUniqueTrack(game) {
@@ -63,6 +131,15 @@ function selectUniqueTrack(game) {
   return selectedTrack;
 }
 
+// Fonction helper pour les couleurs
+function getPlayerColor(index) {
+  const colors = [
+    '#FF3366', '#00D9FF', '#FFD700', '#9D4EDD',
+    '#06FFA5', '#FF6B6B', '#4ECDC4', '#FFE66D'
+  ];
+  return colors[index % colors.length];
+}
+
 io.on('connection', (socket) => {
   console.log('✅ Client connecté:', socket.id);
 
@@ -76,11 +153,11 @@ io.on('connection', (socket) => {
       players: [],
       playlist: null,
       currentRound: null,
-      status: 'waiting', // waiting, playing, paused
-      playedTracks: new Set(), // 🆕 Tracker les tracks déjà joués
+      status: 'waiting',
+      playedTracks: new Set(),
       config: {
         extractDuration: 30,
-        timerDuration: 10, // 🆕 Durée du timer VISUEL (en secondes)
+        timerDuration: 10,
         musicVolume: 70,
         soundEffectsVolume: 80,
       }
@@ -93,7 +170,7 @@ io.on('connection', (socket) => {
     callback({ success: true, roomCode });
   });
 
-  // Rejoindre une partie
+  // 🆕 Rejoindre une partie (AVEC GESTION DISPLAY)
   socket.on('join_game', ({ roomCode, playerName }, callback) => {
     const game = games.get(roomCode);
 
@@ -101,11 +178,21 @@ io.on('connection', (socket) => {
       return callback({ success: false, error: 'Partie introuvable' });
     }
 
+    // 🆕 Si c'est le Display, juste le connecter sans l'ajouter aux joueurs
+    if (playerName && playerName.startsWith('Display-')) {
+      socket.join(roomCode);
+      console.log(`📺 Display connecté à ${roomCode}`);
+      return callback({
+        success: true,
+        players: game.players
+      });
+    }
+
     // Vérifier si le joueur existe déjà (reconnexion)
     const existingPlayer = game.players.find(p => p.name === playerName);
 
     if (existingPlayer) {
-      existingPlayer.id = socket.id; // Mettre à jour l'ID
+      existingPlayer.id = socket.id;
       socket.join(roomCode);
       return callback({
         success: true,
@@ -146,20 +233,11 @@ io.on('connection', (socket) => {
 
     console.log(`🎵 Chargement playlist: ${playlistId}`);
 
-    // Simuler le chargement (en prod, tu appelles l'API Deezer)
-    // Pour l'instant, on simule avec des données de test
-    const mockPlaylist = {
-      id: playlistId,
-      title: 'Blind test années 90 2000 ✨ annees 90 2000',
-      tracks: [
-        { id: 1, title: "Don't Stop The Music", artist: { name: "Rihanna" }, preview: "https://cdns-preview-d.dzcdn.net/stream/c-d..." },
-        { id: 2, title: "Umbrella", artist: { name: "Rihanna" }, preview: "https://..." },
-        // ... autres tracks
-      ]
-    };
+    // 🆕 Utiliser la vraie playlist avec URLs de test
+    const mockPlaylist = getMockPlaylist();
 
     game.playlist = mockPlaylist;
-    game.playedTracks.clear(); // 🆕 Réinitialiser les tracks joués
+    game.playedTracks.clear();
 
     console.log(`✅ Playlist chargée: ${mockPlaylist.title} (${mockPlaylist.tracks.length} titres)`);
 
@@ -172,7 +250,7 @@ io.on('connection', (socket) => {
     });
   });
 
-  // 🆕 Lancer une manche (VERSION CORRIGÉE)
+  // Lancer une manche
   socket.on('start_round', ({ roomCode }, callback) => {
     const game = games.get(roomCode);
 
@@ -184,9 +262,8 @@ io.on('connection', (socket) => {
       return callback({ success: false, error: 'Pas de playlist chargée' });
     }
 
-    console.log(`🚀 Tentative de démarrage manche pour room: ${roomCode}`);
+    console.log(`🚀 Démarrage manche pour room: ${roomCode}`);
 
-    // 🆕 Sélectionner un track unique (non déjà joué)
     const track = selectUniqueTrack(game);
 
     if (!track) {
@@ -201,23 +278,21 @@ io.on('connection', (socket) => {
 
     game.status = 'playing';
 
-    // 🆕 CORRECTION #4 : Broadcaster à TOUTE la room (y compris Display)
+    // Broadcaster à TOUTE la room
     io.to(roomCode).emit('play_track', {
       previewUrl: track.preview,
       duration: game.config.extractDuration,
-      timerDuration: game.config.timerDuration || 10, // 🆕 Durée du timer VISUEL
+      timerDuration: game.config.timerDuration || 10,
       volume: game.config.musicVolume / 100,
-      title: track.title,  // Pour le MC
+      title: track.title,
       artist: track.artist.name
     });
 
-    // Notifier le début de manche
     io.to(roomCode).emit('round_started', {
       roundNumber: game.playedTracks.size
     });
 
     console.log(`📡 Track diffusé à toute la room ${roomCode}`);
-    console.log(`   Nombre de clients dans la room: ${io.sockets.adapter.rooms.get(roomCode)?.size || 0}`);
 
     callback({ success: true });
   });
@@ -236,7 +311,6 @@ io.on('connection', (socket) => {
     game.currentRound.buzzedPlayer = player.id;
     game.currentRound.buzzTime = Date.now();
 
-    // 🆕 CORRECTION #1 : Arrêter la musique quand quelqu'un buzze
     io.to(roomCode).emit('stop_music');
 
     io.to(roomCode).emit('buzz_locked', {
@@ -248,7 +322,7 @@ io.on('connection', (socket) => {
     console.log(`🔔 ${player.name} a buzzé dans ${roomCode}`);
   });
 
-  // Valider une réponse (PAS DE TIMER)
+  // Valider une réponse
   socket.on('validate_answer', ({ roomCode, isCorrect }) => {
     const game = games.get(roomCode);
 
@@ -259,17 +333,14 @@ io.on('connection', (socket) => {
     const player = game.players.find(p => p.id === game.currentRound.buzzedPlayer);
     if (!player) return;
 
-    // 🆕 CORRECTION #3 : Pas de timer, juste validation simple
     const points = isCorrect ? 10 : -5;
     player.score += points;
 
-    // Terminer la manche
     const answer = `${game.currentRound.track.title} - ${game.currentRound.track.artist.name}`;
 
     game.currentRound = null;
     game.status = 'waiting';
 
-    // Envoyer le résultat
     io.to(roomCode).emit('round_result', {
       correct: isCorrect,
       player: {
@@ -286,7 +357,7 @@ io.on('connection', (socket) => {
     console.log(`✅ Réponse ${isCorrect ? 'correcte' : 'incorrecte'} de ${player.name}`);
   });
 
-  // Passer au suivant (timeout ou mauvaise réponse)
+  // Passer au suivant
   socket.on('skip_round', ({ roomCode }) => {
     const game = games.get(roomCode);
 
@@ -313,7 +384,6 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log('❌ Client déconnecté:', socket.id);
 
-    // Retirer le joueur de toutes les parties
     games.forEach((game, roomCode) => {
       const playerIndex = game.players.findIndex(p => p.id === socket.id);
 
@@ -328,23 +398,13 @@ io.on('connection', (socket) => {
         });
       }
 
-      // Supprimer la partie si l'hôte se déconnecte
       if (game.hostId === socket.id) {
-        console.log(`🗑️ Suppression de la partie ${roomCode} (hôte déconnecté)`);
+        console.log(`🗑️ Suppression de la partie ${roomCode}`);
         games.delete(roomCode);
       }
     });
   });
 });
-
-// Fonction helper pour les couleurs
-function getPlayerColor(index) {
-  const colors = [
-    '#FF3366', '#00D9FF', '#FFD700', '#9D4EDD',
-    '#06FFA5', '#FF6B6B', '#4ECDC4', '#FFE66D'
-  ];
-  return colors[index % colors.length];
-}
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
