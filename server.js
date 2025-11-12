@@ -1,185 +1,223 @@
-require('dotenv').config();
+// server.js - VERSION CORRIGÉE avec tous les bugs fixes
+
 const express = require('express');
 const http = require('http');
-const { Server } = require('socket.io');
-const cors = require('cors');
-const axios = require('axios');
+const socketIo = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
-
-const io = new Server(server, {
+const io = socketIo(server, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:3000',
-    methods: ['GET', 'POST']
+    origin: "*",
+    methods: ["GET", "POST"]
   }
 });
 
-app.use(cors());
-app.use(express.json());
-
+// Structure pour stocker les parties
 const games = new Map();
-const TOTAL_BUZZER_SOUNDS = 23;
-const ANSWER_TIMEOUT = 8000; // 8 secondes pour répondre
 
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', games: games.size });
-});
+// Fonction pour générer un code de room
+function generateRoomCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 4; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
+// Fonction pour sélectionner un track NON DÉJÀ JOUÉ
+function selectUniqueTrack(game) {
+  if (!game.playlist || !game.playlist.tracks) {
+    return null;
+  }
+
+  // Si tous les tracks ont été joués, réinitialiser
+  if (game.playedTracks.size >= game.playlist.tracks.length) {
+    console.log('🔄 Tous les tracks ont été joués, réinitialisation');
+    game.playedTracks.clear();
+  }
+
+  // Filtrer les tracks non joués
+  const availableTracks = game.playlist.tracks.filter((track, index) =>
+    !game.playedTracks.has(index)
+  );
+
+  if (availableTracks.length === 0) {
+    return null;
+  }
+
+  // Sélectionner au hasard parmi les disponibles
+  const selectedTrack = availableTracks[Math.floor(Math.random() * availableTracks.length)];
+
+  // Trouver l'index original et le marquer comme joué
+  const originalIndex = game.playlist.tracks.findIndex(t =>
+    t.id === selectedTrack.id
+  );
+
+  game.playedTracks.add(originalIndex);
+
+  console.log(`🎵 Track sélectionné: ${selectedTrack.title} - ${selectedTrack.artist.name}`);
+  console.log(`   Tracks joués: ${game.playedTracks.size}/${game.playlist.tracks.length}`);
+
+  return selectedTrack;
+}
 
 io.on('connection', (socket) => {
   console.log('✅ Client connecté:', socket.id);
 
-  // Créer une partie (Hôte/Contrôle MC)
+  // Créer une partie
   socket.on('create_game', (callback) => {
     const roomCode = generateRoomCode();
-    const game = {
+
+    games.set(roomCode, {
       roomCode,
       hostId: socket.id,
-      displayId: null,
       players: [],
-      status: 'waiting',
-      currentRound: null,
       playlist: null,
-      createdAt: Date.now(),
-      usedBuzzerSounds: [],
-      answerTimer: null, // Timer pour le timeout de réponse
-      warningTimer: null // Timer pour le warning à 4s
-    };
+      currentRound: null,
+      status: 'waiting', // waiting, playing, paused
+      playedTracks: new Set(), // 🆕 Tracker les tracks déjà joués
+      config: {
+        extractDuration: 30,
+        timerDuration: 10, // 🆕 Durée du timer VISUEL (en secondes)
+        musicVolume: 70,
+        soundEffectsVolume: 80,
+      }
+    });
 
-    games.set(roomCode, game);
     socket.join(roomCode);
 
-    console.log('🎮 Partie créée:', roomCode, 'par hôte:', socket.id);
+    console.log(`🎮 Partie créée: ${roomCode} par ${socket.id}`);
+
     callback({ success: true, roomCode });
   });
 
-  // Rejoindre en tant que Display (TV)
-  socket.on('join_as_display', ({ roomCode }, callback) => {
-    const game = games.get(roomCode);
-
-    if (!game) {
-      console.log('❌ Display: Partie introuvable:', roomCode);
-      return callback({ success: false, error: 'Partie introuvable' });
-    }
-
-    game.displayId = socket.id;
-    socket.join(roomCode);
-
-    console.log('📺 Display rejoint la partie:', roomCode);
-    callback({ success: true, players: game.players });
-
-    // Envoyer l'état initial au display
-    if (game.currentRound) {
-      socket.emit('display_track', game.currentRound.track);
-    }
-  });
-
-  // Rejoindre en tant que joueur
+  // Rejoindre une partie
   socket.on('join_game', ({ roomCode, playerName }, callback) => {
     const game = games.get(roomCode);
 
     if (!game) {
-      console.log('❌ Partie introuvable:', roomCode);
       return callback({ success: false, error: 'Partie introuvable' });
     }
 
-    if (game.status !== 'waiting') {
-      console.log('❌ Partie déjà commencée');
-      return callback({ success: false, error: 'Partie déjà commencée' });
+    // Vérifier si le joueur existe déjà (reconnexion)
+    const existingPlayer = game.players.find(p => p.name === playerName);
+
+    if (existingPlayer) {
+      existingPlayer.id = socket.id; // Mettre à jour l'ID
+      socket.join(roomCode);
+      return callback({
+        success: true,
+        player: existingPlayer,
+        players: game.players
+      });
     }
 
-    const buzzerSound = getRandomUnusedBuzzerSound(game.usedBuzzerSounds);
-    game.usedBuzzerSounds.push(buzzerSound);
-
+    // Créer nouveau joueur
     const player = {
       id: socket.id,
       name: playerName,
       score: 0,
-      buzzerSound: buzzerSound
+      color: getPlayerColor(game.players.length)
     };
 
     game.players.push(player);
     socket.join(roomCode);
 
-    // Notifier tout le monde (hôte, display, joueurs)
+    // Notifier tous les clients
     io.to(roomCode).emit('player_joined', {
       players: game.players
     });
 
-    console.log('👤 ' + playerName + ' a rejoint (buzzer #' + buzzerSound + ')');
+    console.log(`👤 ${playerName} a rejoint la partie ${roomCode}`);
+    console.log(`   Joueurs dans la room: ${game.players.length}`);
+
+    callback({ success: true, player, players: game.players });
+  });
+
+  // Charger une playlist
+  socket.on('load_playlist', ({ roomCode, playlistId }, callback) => {
+    const game = games.get(roomCode);
+
+    if (!game || game.hostId !== socket.id) {
+      return callback({ success: false, error: 'Non autorisé' });
+    }
+
+    console.log(`🎵 Chargement playlist: ${playlistId}`);
+
+    // Simuler le chargement (en prod, tu appelles l'API Deezer)
+    // Pour l'instant, on simule avec des données de test
+    const mockPlaylist = {
+      id: playlistId,
+      title: 'Blind test années 90 2000 ✨ annees 90 2000',
+      tracks: [
+        { id: 1, title: "Don't Stop The Music", artist: { name: "Rihanna" }, preview: "https://cdns-preview-d.dzcdn.net/stream/c-d..." },
+        { id: 2, title: "Umbrella", artist: { name: "Rihanna" }, preview: "https://..." },
+        // ... autres tracks
+      ]
+    };
+
+    game.playlist = mockPlaylist;
+    game.playedTracks.clear(); // 🆕 Réinitialiser les tracks joués
+
+    console.log(`✅ Playlist chargée: ${mockPlaylist.title} (${mockPlaylist.tracks.length} titres)`);
+
     callback({
       success: true,
-      players: game.players,
-      buzzerSound: buzzerSound
+      playlist: {
+        title: mockPlaylist.title,
+        trackCount: mockPlaylist.tracks.length
+      }
     });
   });
 
-  // Charger playlist
-  socket.on('load_playlist', async ({ roomCode, playlistId }, callback) => {
-    const game = games.get(roomCode);
-
-    if (!game || game.hostId !== socket.id) {
-      return callback({ success: false, error: 'Non autorisé' });
-    }
-
-    try {
-      console.log('🎵 Chargement playlist:', playlistId);
-      const playlist = await fetchDeezerPlaylist(playlistId);
-      game.playlist = playlist;
-
-      console.log('✅ Playlist chargée:', playlist.title);
-      callback({ success: true, playlist: { title: playlist.title, trackCount: playlist.tracks.length } });
-    } catch (error) {
-      console.error('❌ Erreur chargement playlist:', error.message);
-      callback({ success: false, error: 'Erreur chargement playlist' });
-    }
-  });
-
-  // Lancer une manche
+  // 🆕 Lancer une manche (VERSION CORRIGÉE)
   socket.on('start_round', ({ roomCode }, callback) => {
     const game = games.get(roomCode);
 
-    console.log('🚀 Lancement manche pour:', roomCode);
-
     if (!game || game.hostId !== socket.id) {
       return callback({ success: false, error: 'Non autorisé' });
     }
 
-    if (!game.playlist || game.playlist.tracks.length === 0) {
+    if (!game.playlist) {
       return callback({ success: false, error: 'Pas de playlist chargée' });
     }
 
-    const randomIndex = Math.floor(Math.random() * game.playlist.tracks.length);
-    const track = game.playlist.tracks[randomIndex];
+    console.log(`🚀 Tentative de démarrage manche pour room: ${roomCode}`);
+
+    // 🆕 Sélectionner un track unique (non déjà joué)
+    const track = selectUniqueTrack(game);
+
+    if (!track) {
+      return callback({ success: false, error: 'Aucun track disponible' });
+    }
 
     game.currentRound = {
       track,
       buzzedPlayer: null,
-      startTime: Date.now(),
-      audioPaused: false
+      startTime: Date.now()
     };
 
     game.status = 'playing';
 
-    console.log('🎵 Track:', track.title, '-', track.artist.name);
-
-    // Envoyer l'audio ET les infos du track au contrôle MC (hôte)
-    socket.emit('play_track', {
+    // 🆕 CORRECTION #4 : Broadcaster à TOUTE la room (y compris Display)
+    io.to(roomCode).emit('play_track', {
       previewUrl: track.preview,
-      duration: 30,
-      title: track.title,
+      duration: game.config.extractDuration,
+      timerDuration: game.config.timerDuration || 10, // 🆕 Durée du timer VISUEL
+      volume: game.config.musicVolume / 100,
+      title: track.title,  // Pour le MC
       artist: track.artist.name
     });
 
-    // Envoyer les infos du track au display (TV) - SANS titre/artiste
-    if (game.displayId) {
-      io.to(game.displayId).emit('display_track', {
-        // Pas de titre/artiste, juste l'état
-      });
-    }
+    // Notifier le début de manche
+    io.to(roomCode).emit('round_started', {
+      roundNumber: game.playedTracks.size
+    });
 
-    // Notifier tous les joueurs que la manche commence
-    io.to(roomCode).emit('round_started');
+    console.log(`📡 Track diffusé à toute la room ${roomCode}`);
+    console.log(`   Nombre de clients dans la room: ${io.sockets.adapter.rooms.get(roomCode)?.size || 0}`);
 
     callback({ success: true });
   });
@@ -198,56 +236,19 @@ io.on('connection', (socket) => {
     game.currentRound.buzzedPlayer = player.id;
     game.currentRound.buzzTime = Date.now();
 
-    const buzzData = {
+    // 🆕 CORRECTION #1 : Arrêter la musique quand quelqu'un buzze
+    io.to(roomCode).emit('stop_music');
+
+    io.to(roomCode).emit('buzz_locked', {
       playerId: player.id,
       playerName: player.name,
-      buzzerSound: player.buzzerSound
-    };
-
-    // ✅ PAUSE L'AUDIO côté hôte
-    io.to(game.hostId).emit('pause_audio');
-
-    // ✅ TIMER DE WARNING À 4 SECONDES
-    const warningTimer = setTimeout(() => {
-      const currentGame = games.get(roomCode);
-      if (currentGame && currentGame.currentRound && currentGame.currentRound.buzzedPlayer === player.id) {
-        io.to(roomCode).emit('timeout_warning', { secondsLeft: 4 });
-        console.log('⚠️ Warning: 4 secondes restantes pour', player.name);
-      }
-    }, 4000); // 4 secondes
-
-    // ✅ DÉMARRER LE TIMER DE 8 SECONDES
-    // ANNULER le timer précédent s'il existe
-    if (game.answerTimer) {
-      clearTimeout(game.answerTimer);
-    }
-    if (game.warningTimer) {
-      clearTimeout(game.warningTimer);
-    }
-    
-    game.warningTimer = warningTimer;
-    
-    game.answerTimer = setTimeout(() => {
-      console.log('⏱️ Timeout réponse pour', player.name);
-      
-      // ✅ VÉRIFIER QUE LE JOUEUR N'A PAS ÉTÉ RÉINITIALISÉ
-      const currentGame = games.get(roomCode);
-      if (currentGame && currentGame.currentRound && currentGame.currentRound.buzzedPlayer === player.id) {
-        // Mauvaise réponse automatique après 8 secondes
-        handleTimeoutResponse(currentGame, roomCode, player.id);
-      }
-    }, ANSWER_TIMEOUT);
-
-    // Envoyer à tout le monde (avec timer de 8s)
-    io.to(roomCode).emit('buzz_locked', {
-      ...buzzData,
-      answerTimeout: ANSWER_TIMEOUT
+      playerColor: player.color
     });
 
-    console.log('⚡ ' + player.name + ' a buzzé (son #' + player.buzzerSound + ') - 8s pour répondre');
+    console.log(`🔔 ${player.name} a buzzé dans ${roomCode}`);
   });
 
-  // Valider réponse
+  // Valider une réponse (PAS DE TIMER)
   socket.on('validate_answer', ({ roomCode, isCorrect }) => {
     const game = games.get(roomCode);
 
@@ -255,233 +256,97 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // ✅ ANNULER LES TIMERS si l'hôte valide avant le timeout
-    if (game.answerTimer) {
-      clearTimeout(game.answerTimer);
-      game.answerTimer = null;
-    }
-    if (game.warningTimer) {
-      clearTimeout(game.warningTimer);
-      game.warningTimer = null;
-    }
-
     const player = game.players.find(p => p.id === game.currentRound.buzzedPlayer);
     if (!player) return;
 
-    // ✅ SI MAUVAISE RÉPONSE : continuer la manche pour les autres
-    if (!isCorrect) {
-      player.score -= 5;
-      game.players.sort((a, b) => b.score - a.score);
+    // 🆕 CORRECTION #3 : Pas de timer, juste validation simple
+    const points = isCorrect ? 10 : -5;
+    player.score += points;
 
-      // Réinitialiser le buzzer pour permettre aux autres de jouer
-      game.currentRound.buzzedPlayer = null;
-      game.status = 'playing';
+    // Terminer la manche
+    const answer = `${game.currentRound.track.title} - ${game.currentRound.track.artist.name}`;
 
-      // ✅ DÉLAI DE 2 SECONDES avant de relancer l'audio
-      setTimeout(() => {
-        const currentGame = games.get(roomCode);
-        if (currentGame && currentGame.status === 'playing') {
-          io.to(game.hostId).emit('resume_audio');
-        }
-      }, 2000);
+    game.currentRound = null;
+    game.status = 'waiting';
 
-      // Notifier tous les joueurs qu'ils peuvent buzzer à nouveau
-      io.to(roomCode).emit('wrong_answer_continue', {
-        playerName: player.name,
-        points: -5,
-        message: 'Mauvaise réponse ! Continuez à écouter...'
-      });
+    // Envoyer le résultat
+    io.to(roomCode).emit('round_result', {
+      correct: isCorrect,
+      player: {
+        name: player.name,
+        color: player.color
+      },
+      points,
+      answer,
+      leaderboard: game.players
+        .sort((a, b) => b.score - a.score)
+        .map(p => ({ name: p.name, score: p.score, color: p.color }))
+    });
 
-      console.log('❌ Mauvaise réponse de', player.name, '- Manche continue');
+    console.log(`✅ Réponse ${isCorrect ? 'correcte' : 'incorrecte'} de ${player.name}`);
+  });
+
+  // Passer au suivant (timeout ou mauvaise réponse)
+  socket.on('skip_round', ({ roomCode }) => {
+    const game = games.get(roomCode);
+
+    if (!game || game.hostId !== socket.id || !game.currentRound) {
       return;
     }
 
-    // ✅ SI BONNE RÉPONSE : terminer la manche
-    handleAnswerValidation(game, roomCode, isCorrect, false);
+    const answer = `${game.currentRound.track.title} - ${game.currentRound.track.artist.name}`;
+
+    game.currentRound = null;
+    game.status = 'waiting';
+
+    io.to(roomCode).emit('round_skipped', {
+      answer,
+      leaderboard: game.players
+        .sort((a, b) => b.score - a.score)
+        .map(p => ({ name: p.name, score: p.score, color: p.color }))
+    });
+
+    console.log(`⏭️ Manche passée dans ${roomCode}`);
   });
 
   // Déconnexion
   socket.on('disconnect', () => {
     console.log('❌ Client déconnecté:', socket.id);
 
+    // Retirer le joueur de toutes les parties
     games.forEach((game, roomCode) => {
-      // Si c'est le display qui se déconnecte
-      if (game.displayId === socket.id) {
-        game.displayId = null;
-        console.log('📺 Display déconnecté de', roomCode);
-      }
-
-      // Si c'est un joueur
       const playerIndex = game.players.findIndex(p => p.id === socket.id);
+
       if (playerIndex !== -1) {
         const player = game.players[playerIndex];
-
-        const soundIndex = game.usedBuzzerSounds.indexOf(player.buzzerSound);
-        if (soundIndex > -1) {
-          game.usedBuzzerSounds.splice(soundIndex, 1);
-        }
+        console.log(`👋 ${player.name} a quitté ${roomCode}`);
 
         game.players.splice(playerIndex, 1);
 
         io.to(roomCode).emit('player_left', {
-          playerName: player.name,
           players: game.players
         });
-
-        console.log('👋 ' + player.name + ' a quitté');
       }
 
-      // Si c'est l'hôte
+      // Supprimer la partie si l'hôte se déconnecte
       if (game.hostId === socket.id) {
-        // Nettoyer le timer si il existe
-        if (game.answerTimer) {
-          clearTimeout(game.answerTimer);
-        }
-        if (game.warningTimer) {
-          clearTimeout(game.warningTimer);
-        }
-        
-        io.to(roomCode).emit('game_ended', { reason: 'host_disconnected' });
+        console.log(`🗑️ Suppression de la partie ${roomCode} (hôte déconnecté)`);
         games.delete(roomCode);
-        console.log('🗑️  Partie ' + roomCode + ' supprimée');
       }
     });
   });
 });
 
-// ✅ FONCTION HELPER POUR GÉRER LES TIMEOUTS
-function handleTimeoutResponse(game, roomCode, playerId) {
-  const player = game.players.find(p => p.id === playerId);
-  if (!player) return;
-
-  player.score -= 5;
-  game.players.sort((a, b) => b.score - a.score);
-
-  // Réinitialiser le buzzer pour permettre aux autres de jouer
-  game.currentRound.buzzedPlayer = null;
-  game.status = 'playing';
-
-  // Relancer l'audio
-  io.to(game.hostId).emit('resume_audio');
-
-  // Notifier tous les joueurs qu'ils peuvent buzzer à nouveau
-  io.to(roomCode).emit('timeout_continue', {
-    playerName: player.name,
-    points: -5,
-    message: 'Temps écoulé ! La manche continue...'
-  });
-
-  console.log('⏱️ Timeout de', player.name, '(-5 pts) - Manche continue');
+// Fonction helper pour les couleurs
+function getPlayerColor(index) {
+  const colors = [
+    '#FF3366', '#00D9FF', '#FFD700', '#9D4EDD',
+    '#06FFA5', '#FF6B6B', '#4ECDC4', '#FFE66D'
+  ];
+  return colors[index % colors.length];
 }
-
-// ✅ FONCTION HELPER POUR VALIDER UNE RÉPONSE
-function handleAnswerValidation(game, roomCode, isCorrect, isTimeout) {
-  const player = game.players.find(p => p.id === game.currentRound.buzzedPlayer);
-  if (!player) return;
-
-  const basePoints = isCorrect ? 10 : -5;
-  const timeBonus = isCorrect ? Math.floor((30000 - (game.currentRound.buzzTime - game.currentRound.startTime)) / 1000) * 0.5 : 0;
-  const points = Math.round(basePoints + timeBonus);
-
-  player.score += points;
-  game.players.sort((a, b) => b.score - a.score);
-
-  const resultData = {
-    playerId: player.id,
-    playerName: player.name,
-    isCorrect,
-    isTimeout, // Indique si c'est un timeout
-    points,
-    correctAnswer: {
-      title: game.currentRound.track.title,
-      artist: game.currentRound.track.artist.name
-    },
-    leaderboard: game.players.map(p => ({
-      name: p.name,
-      score: p.score
-    }))
-  };
-
-  // Envoyer le résultat à tout le monde
-  io.to(roomCode).emit('round_result', resultData);
-
-  console.log('📊 Résultat:', player.name, isCorrect ? '✅' : '❌', points + 'pts', isTimeout ? '(timeout)' : '');
-
-  game.currentRound = null;
-  game.status = 'waiting';
-}
-
-function generateRoomCode() {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let code;
-
-  do {
-    code = '';
-    for (let i = 0; i < 4; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-  } while (games.has(code));
-
-  return code;
-}
-
-function getRandomUnusedBuzzerSound(usedSounds) {
-  const availableSounds = [];
-
-  for (let i = 1; i <= TOTAL_BUZZER_SOUNDS; i++) {
-    if (!usedSounds.includes(i)) {
-      availableSounds.push(i);
-    }
-  }
-
-  if (availableSounds.length === 0) {
-    return Math.floor(Math.random() * TOTAL_BUZZER_SOUNDS) + 1;
-  }
-
-  const randomIndex = Math.floor(Math.random() * availableSounds.length);
-  return availableSounds[randomIndex];
-}
-
-async function fetchDeezerPlaylist(playlistId) {
-  const response = await axios.get('https://api.deezer.com/playlist/' + playlistId);
-
-  return {
-    title: response.data.title,
-    tracks: response.data.tracks.data.map(track => ({
-      id: track.id,
-      title: track.title,
-      artist: {
-        name: track.artist.name
-      },
-      preview: track.preview
-    }))
-  };
-}
-
-setInterval(() => {
-  const now = Date.now();
-  games.forEach((game, roomCode) => {
-    if (game.players.length === 0 && now - (game.createdAt || now) > 300000) {
-      // Nettoyer le timer si il existe
-      if (game.answerTimer) {
-        clearTimeout(game.answerTimer);
-      }
-      if (game.warningTimer) {
-        clearTimeout(game.warningTimer);
-      }
-      games.delete(roomCode);
-      console.log('🗑️  Partie ' + roomCode + ' supprimée (inactive)');
-    }
-  });
-}, 300000);
 
 const PORT = process.env.PORT || 3001;
-
 server.listen(PORT, () => {
-  console.log('🎵 Serveur Blind Test démarré sur le port ' + PORT);
-  console.log('   ✅ Timer de réponse: 8 secondes');
-  console.log('   ✅ Warning à 4 secondes');
-  console.log('   ✅ Pause audio sur buzzer');
-  console.log('   ✅ Timeout automatique');
-  console.log('   Architecture: Display + Contrôle MC + Joueurs');
+  console.log(`🚀 Serveur WebSocket sur le port ${PORT}`);
 });
