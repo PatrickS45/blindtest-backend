@@ -52,7 +52,7 @@ app.get('/proxy-audio', async (req, res) => {
   }
 });
 
-// 🆕 CORRECTION BUG : selectUniqueTrack ne duplique plus
+// 🆕 CORRECTION BUG : selectUniqueTrack ne duplique plus + skip tracks sans preview
 function selectUniqueTrack(game) {
   if (!game.playlist || !game.playlist.tracks) {
     return null;
@@ -63,15 +63,19 @@ function selectUniqueTrack(game) {
     game.playedTracks.clear();
   }
 
-  // Créer une liste des index disponibles
+  // Créer une liste des index disponibles AVEC preview
   const availableIndexes = [];
   for (let i = 0; i < game.playlist.tracks.length; i++) {
-    if (!game.playedTracks.has(i)) {
+    const track = game.playlist.tracks[i];
+    if (!game.playedTracks.has(i) && track.hasPreview) {  // 🆕 Vérifier hasPreview
       availableIndexes.push(i);
     }
   }
 
-  if (availableIndexes.length === 0) return null;
+  if (availableIndexes.length === 0) {
+    console.log('⚠️ Plus de tracks avec preview disponibles');
+    return null;
+  }
 
   // Sélectionner un index aléatoire
   const randomIndex = availableIndexes[Math.floor(Math.random() * availableIndexes.length)];
@@ -81,7 +85,7 @@ function selectUniqueTrack(game) {
   game.playedTracks.add(randomIndex);
 
   console.log(`🎵 Track #${randomIndex + 1}: ${selectedTrack.title} - ${selectedTrack.artist.name}`);
-  console.log(`   Joués: ${game.playedTracks.size}/${game.playlist.tracks.length}`);
+  console.log(`   Joués: ${game.playedTracks.size}/${game.playlist.tracks.length} (${availableIndexes.length} restants avec preview)`);
 
   return selectedTrack;
 }
@@ -196,22 +200,25 @@ io.on('connection', (socket) => {
       }
 
       const allTracks = response.data.tracks.data;
-      const tracksWithPreview = allTracks.filter(track => track.preview);
 
-      console.log(`📊 Tracks total: ${allTracks.length}`);
-      console.log(`📊 Tracks avec preview: ${tracksWithPreview.length}`);
-      console.log(`⚠️ Tracks sans preview: ${allTracks.length - tracksWithPreview.length}`);
-
+      // 🆕 Garder TOUS les tracks mais marquer ceux sans preview
       const playlist = {
         id: response.data.id,
         title: response.data.title,
-        tracks: tracksWithPreview.map(track => ({
+        tracks: allTracks.map(track => ({
           id: track.id,
           title: track.title,
           artist: { name: track.artist.name },
-          preview: track.preview
+          preview: track.preview || null,
+          hasPreview: !!track.preview  // 🆕 Flag pour savoir si preview existe
         }))
       };
+
+      const tracksWithPreview = playlist.tracks.filter(t => t.hasPreview).length;
+
+      console.log(`📊 Tracks total: ${allTracks.length}`);
+      console.log(`📊 Tracks avec preview: ${tracksWithPreview}`);
+      console.log(`⚠️ Tracks sans preview: ${allTracks.length - tracksWithPreview}`);
 
       game.playlist = playlist;
       game.playedTracks.clear();
