@@ -162,15 +162,17 @@ io.on('connection', (socket) => {
       }
 
       const playlist = {
-        id: response.data.id,
-        title: response.data.title,
-        tracks: response.data.tracks.data.map(track => ({
-          id: track.id,
-          title: track.title,
-          artist: { name: track.artist.name },
-          preview: track.preview
-        }))
-      };
+  id: response.data.id,
+  title: response.data.title,
+  tracks: response.data.tracks.data
+    .filter(track => track.preview)  // 🆕 Filtrer les tracks sans preview
+    .map(track => ({
+      id: track.id,
+      title: track.title,
+      artist: { name: track.artist.name },
+      preview: track.preview
+    }))
+};
 
       game.playlist = playlist;
       game.playedTracks.clear();
