@@ -1,4 +1,4 @@
-// server.js - VERSION FINALE AVEC API DEEZER
+// server.js - VERSION FINALE AVEC PROXY CORS + BUGS CORRIGÉS
 
 const express = require('express');
 const http = require('http');
@@ -25,28 +25,62 @@ function generateRoomCode() {
   return code;
 }
 
+// 🆕 PROXY AUDIO POUR CONTOURNER CORS
+app.get('/proxy-audio', async (req, res) => {
+  const { url } = req.query;
+
+  if (!url) {
+    return res.status(400).send('URL manquante');
+  }
+
+  try {
+    const response = await axios.get(url, {
+      responseType: 'stream',
+      headers: {
+        'User-Agent': 'Mozilla/5.0'
+      }
+    });
+
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+
+    response.data.pipe(res);
+  } catch (error) {
+    console.error('❌ Erreur proxy audio:', error.message);
+    res.status(500).send('Erreur proxy');
+  }
+});
+
+// 🆕 CORRECTION BUG : selectUniqueTrack ne duplique plus
 function selectUniqueTrack(game) {
   if (!game.playlist || !game.playlist.tracks) {
     return null;
   }
 
   if (game.playedTracks.size >= game.playlist.tracks.length) {
-    console.log('🔄 Réinitialisation des tracks');
+    console.log('🔄 Réinitialisation');
     game.playedTracks.clear();
   }
 
-  const availableTracks = game.playlist.tracks.filter((track, index) =>
-    !game.playedTracks.has(index)
-  );
+  // Créer une liste des index disponibles
+  const availableIndexes = [];
+  for (let i = 0; i < game.playlist.tracks.length; i++) {
+    if (!game.playedTracks.has(i)) {
+      availableIndexes.push(i);
+    }
+  }
 
-  if (availableTracks.length === 0) return null;
+  if (availableIndexes.length === 0) return null;
 
-  const selectedTrack = availableTracks[Math.floor(Math.random() * availableTracks.length)];
-  const originalIndex = game.playlist.tracks.findIndex(t => t.id === selectedTrack.id);
+  // Sélectionner un index aléatoire
+  const randomIndex = availableIndexes[Math.floor(Math.random() * availableIndexes.length)];
+  const selectedTrack = game.playlist.tracks[randomIndex];
 
-  game.playedTracks.add(originalIndex);
+  // Marquer cet index comme joué
+  game.playedTracks.add(randomIndex);
 
-  console.log(`🎵 Track: ${selectedTrack.title} - ${selectedTrack.artist.name}`);
+  console.log(`🎵 Track #${randomIndex + 1}: ${selectedTrack.title} - ${selectedTrack.artist.name}`);
   console.log(`   Joués: ${game.playedTracks.size}/${game.playlist.tracks.length}`);
 
   return selectedTrack;
@@ -138,11 +172,11 @@ io.on('connection', (socket) => {
       success: true,
       player,
       players: game.players,
-      buzzerSound: Math.floor(Math.random() * 23) + 1  // 🎲 Aléatoire entre 1 et 23
+      buzzerSound: Math.floor(Math.random() * 23) + 1  // 🎲 Aléatoire
     });
   });
 
-  // 🆕 CHARGEMENT PLAYLIST DEEZER
+  // 🆕 CHARGEMENT PLAYLIST DEEZER AVEC LOGS
   socket.on('load_playlist', async ({ roomCode, playlistId }, callback) => {
     const game = games.get(roomCode);
 
@@ -161,10 +195,17 @@ io.on('connection', (socket) => {
         throw new Error('Playlist vide ou invalide');
       }
 
+      const allTracks = response.data.tracks.data;
+      const tracksWithPreview = allTracks.filter(track => track.preview);
+
+      console.log(`📊 Tracks total: ${allTracks.length}`);
+      console.log(`📊 Tracks avec preview: ${tracksWithPreview.length}`);
+      console.log(`⚠️ Tracks sans preview: ${allTracks.length - tracksWithPreview.length}`);
+
       const playlist = {
         id: response.data.id,
         title: response.data.title,
-        tracks: response.data.tracks.data.map(track => ({
+        tracks: tracksWithPreview.map(track => ({
           id: track.id,
           title: track.title,
           artist: { name: track.artist.name },
@@ -175,7 +216,7 @@ io.on('connection', (socket) => {
       game.playlist = playlist;
       game.playedTracks.clear();
 
-      console.log(`✅ Playlist: ${playlist.title} (${playlist.tracks.length} titres)`);
+      console.log(`✅ Playlist: ${playlist.title} (${playlist.tracks.length} titres utilisables)`);
 
       callback({
         success: true,
@@ -188,7 +229,7 @@ io.on('connection', (socket) => {
       console.error('❌ Erreur Deezer:', error.message);
       callback({
         success: false,
-        error: 'Impossible de charger la playlist. Vérifiez l\'ID.'
+        error: 'Impossible de charger la playlist'
       });
     }
   });
@@ -218,8 +259,12 @@ io.on('connection', (socket) => {
 
     game.status = 'playing';
 
+    // 🆕 Utiliser le proxy pour contourner CORS
+    const serverUrl = process.env.SERVER_URL || 'http://localhost:3001';
+    const proxiedUrl = `${serverUrl}/proxy-audio?url=${encodeURIComponent(track.preview)}`;
+
     io.to(roomCode).emit('play_track', {
-      previewUrl: track.preview,
+      previewUrl: proxiedUrl,  // 🆕 URL via proxy
       duration: game.config.extractDuration,
       timerDuration: game.config.timerDuration || 10,
       volume: game.config.musicVolume / 100,
@@ -231,7 +276,7 @@ io.on('connection', (socket) => {
       roundNumber: game.playedTracks.size
     });
 
-    console.log(`📡 Track diffusé à ${roomCode}`);
+    console.log(`📡 Track diffusé via proxy: ${track.title}`);
 
     callback({ success: true });
   });
@@ -344,4 +389,5 @@ io.on('connection', (socket) => {
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`🚀 Serveur sur le port ${PORT}`);
+  console.log(`🔊 Proxy audio disponible: http://localhost:${PORT}/proxy-audio`);
 });
