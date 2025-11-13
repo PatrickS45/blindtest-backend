@@ -266,12 +266,12 @@ io.on('connection', (socket) => {
 
     game.status = 'playing';
 
-    // 🆕 Utiliser le proxy pour contourner CORS
+    // 🆕 TOUJOURS utiliser le proxy pour éviter CORS
     const serverUrl = process.env.SERVER_URL || 'http://localhost:3001';
     const proxiedUrl = `${serverUrl}/proxy-audio?url=${encodeURIComponent(track.preview)}`;
 
     io.to(roomCode).emit('play_track', {
-      previewUrl: proxiedUrl,  // 🆕 URL via proxy
+      previewUrl: proxiedUrl,  // ✅ Toujours via proxy
       duration: game.config.extractDuration,
       timerDuration: game.config.timerDuration || 10,
       volume: game.config.musicVolume / 100,
