@@ -113,7 +113,7 @@ io.on('connection', (socket) => {
         success: true,
         player: existingPlayer,
         players: game.players,
-        buzzerSound: game.players.indexOf(existingPlayer) + 1
+        buzzerSound: Math.floor(Math.random() * 23) + 1  // 🎲 Aléatoire
       });
     }
 
@@ -138,7 +138,7 @@ io.on('connection', (socket) => {
       success: true,
       player,
       players: game.players,
-      buzzerSound: game.players.length
+      buzzerSound: Math.floor(Math.random() * 23) + 1  // 🎲 Aléatoire entre 1 et 23
     });
   });
 
@@ -162,17 +162,15 @@ io.on('connection', (socket) => {
       }
 
       const playlist = {
-  id: response.data.id,
-  title: response.data.title,
-  tracks: response.data.tracks.data
-    .filter(track => track.preview)  // 🆕 Filtrer les tracks sans preview
-    .map(track => ({
-      id: track.id,
-      title: track.title,
-      artist: { name: track.artist.name },
-      preview: track.preview
-    }))
-};
+        id: response.data.id,
+        title: response.data.title,
+        tracks: response.data.tracks.data.map(track => ({
+          id: track.id,
+          title: track.title,
+          artist: { name: track.artist.name },
+          preview: track.preview
+        }))
+      };
 
       game.playlist = playlist;
       game.playedTracks.clear();
