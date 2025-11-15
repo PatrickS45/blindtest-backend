@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Test CORS Deezer</title>
+  <style>
+    body {
+      font-family: monospace;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+      background: #1a1a1a;
+      color: #00ff00;
+    }
+    button {
+      padding: 15px 30px;
+      font-size: 16px;
+      background: #00ff00;
+      color: #000;
+      border: none;
+      cursor: pointer;
+      margin: 10px 0;
+    }
+    button:hover {
+      background: #00cc00;
+    }
+    .log {
+      background: #000;
+      padding: 15px;
+      margin: 10px 0;
+      border-left: 3px solid #00ff00;
+      white-space: pre-wrap;
+    }
+    .error { border-left-color: #ff0000; color: #ff0000; }
+    .success { border-left-color: #00ff00; color: #00ff00; }
+  </style>
+</head>
+<body>
+  <h1>🔬 Test CORS Deezer Preview URLs</h1>
+
+  <button onclick="testWithDeezerAPI()">Test 1: Charger playlist Deezer + tester CORS</button>
+  <button onclick="testDirectURL()">Test 2: Tester URL preview directe</button>
+
+  <div id="output"></div>
+
+  <script>
+    const output = document.getElementById('output');
+
+    function log(message, type = 'log') {
+      const div = document.createElement('div');
+      div.className = `log ${type}`;
+      div.textContent = message;
+      output.appendChild(div);
+    }
+
+    async function testWithDeezerAPI() {
+      output.innerHTML = '';
+      log('🔍 Chargement playlist Deezer...');
+
+      try {
+        // Charger une playlist
+        const response = await fetch('https://api.deezer.com/playlist/1963962142');
+        const data = await response.json();
+
+        log(`✅ Playlist chargée: ${data.title}`);
+        log(`📊 Tracks: ${data.tracks.data.length}`);
+
+        // Trouver une track avec preview
+        const track = data.tracks.data.find(t => t.preview);
+
+        if (!track) {
+          log('❌ Aucune preview trouvée', 'error');
+          return;
+        }
+
+        log(`\n📀 Track: ${track.title} - ${track.artist.name}`);
+        log(`🔗 URL: ${track.preview}`);
+
+        // Tester CORS sur la preview
+        log('\n🧪 Test CORS...');
+        await testCORS(track.preview);
+
+      } catch (error) {
+        log(`❌ Erreur: ${error.message}`, 'error');
+      }
+    }
+
+    async function testDirectURL() {
+      output.innerHTML = '';
+
+      // URL de test (peut être expirée, mais on verra le CORS quand même)
+      const testURL = 'https://cdns-preview-d.dzcdn.net/stream/c-deda7fa9316d9e9e880d2c6207e92260-8.mp3';
+
+      log('🔗 Test avec URL: ' + testURL);
+      await testCORS(testURL);
+    }
+
+    async function testCORS(previewURL) {
+      try {
+        // Méthode 1: Fetch
+        log('\n📡 Méthode 1: fetch()...');
+        const response = await fetch(previewURL, { method: 'HEAD' });
+
+        log(`✅ Status: ${response.status} ${response.statusText}`);
+
+        // Vérifier les headers CORS
+        const corsHeader = response.headers.get('access-control-allow-origin');
+
+        if (corsHeader) {
+          log(`✅ Access-Control-Allow-Origin: ${corsHeader}`, 'success');
+          log('✅ CORS ACTIVÉ !', 'success');
+        } else {
+          log('❌ Pas de header Access-Control-Allow-Origin', 'error');
+          log('❌ CORS DÉSACTIVÉ', 'error');
+        }
+
+        // Méthode 2: Audio element (test pratique)
+        log('\n🎵 Méthode 2: Audio element...');
+        const audio = new Audio(previewURL);
+
+        audio.onloadeddata = () => {
+          log('✅ Audio chargé avec succès !', 'success');
+          log('✅ Les URLs Deezer fonctionnent directement !', 'success');
+          log('\n💡 CONCLUSION: Pas besoin de proxy !', 'success');
+        };
+
+        audio.onerror = (e) => {
+          log(`❌ Erreur audio: ${audio.error?.message || 'Unknown'}`, 'error');
+          log('⚠️  Un proxy pourrait être nécessaire', 'error');
+        };
+
+        // Jouer 1 seconde pour tester
+        setTimeout(() => {
+          audio.play().then(() => {
+            log('✅ Lecture démarrée !', 'success');
+            setTimeout(() => {
+              audio.pause();
+              log('⏸️  Test terminé');
+            }, 1000);
+          }).catch(err => {
+            log(`❌ Erreur play: ${err.message}`, 'error');
+          });
+        }, 500);
+
+      } catch (error) {
+        log(`❌ Erreur CORS: ${error.message}`, 'error');
+        log('❌ CORS bloqué - Proxy nécessaire', 'error');
+      }
+    }
+  </script>
+
+  <footer style="margin-top: 50px; padding-top: 20px; border-top: 1px solid #333;">
+    <p>💡 Instructions:</p>
+    <p>1. Clique sur "Test 1" pour charger une vraie playlist Deezer</p>
+    <p>2. Observe les logs pour voir si CORS fonctionne</p>
+    <p>3. Si tu vois "✅ CORS ACTIVÉ" → Pas besoin de proxy</p>
+    <p>4. Si tu vois "❌ CORS DÉSACTIVÉ" → Proxy nécessaire</p>
+  </footer>
+</body>
+</html>

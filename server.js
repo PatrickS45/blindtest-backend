@@ -1,5 +1,7 @@
 // server.js - VERSION FINALE AVEC PROXY CORS + BUGS CORRIGÉS
 
+require('dotenv').config();
+
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
@@ -24,6 +26,11 @@ function generateRoomCode() {
   }
   return code;
 }
+
+// 🧪 PAGE DE TEST CORS
+app.get('/test-cors', (req, res) => {
+  res.sendFile(__dirname + '/test-cors.html');
+});
 
 // 🆕 PROXY AUDIO POUR CONTOURNER CORS
 app.get('/proxy-audio', async (req, res) => {
