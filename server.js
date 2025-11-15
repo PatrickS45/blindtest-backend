@@ -27,6 +27,11 @@ function generateRoomCode() {
   return code;
 }
 
+// 🧪 PAGE DE TEST CORS
+app.get('/test-cors', (req, res) => {
+  res.sendFile(__dirname + '/test-cors.html');
+});
+
 // 🆕 PROXY AUDIO POUR CONTOURNER CORS
 app.get('/proxy-audio', async (req, res) => {
   const { url } = req.query;
