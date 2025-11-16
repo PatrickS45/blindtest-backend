@@ -1,4 +1,4 @@
-// server.js - VERSION FINALE AVEC PROXY CORS + BUGS CORRIGÉS
+// server.js - VERSION SPOTIFY (SANS PROXY CORS!)
 
 require('dotenv').config();
 
@@ -6,6 +6,10 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const axios = require('axios');
+
+// 🎵 SPOTIFY AUTH CACHE
+let spotifyToken = null;
+let tokenExpiry = 0;
 
 const app = express();
 const server = http.createServer(app);
@@ -17,6 +21,41 @@ const io = socketIo(server, {
 });
 
 const games = new Map();
+
+// 🎵 SPOTIFY AUTHENTICATION
+async function getSpotifyToken() {
+  // Utiliser le token en cache s'il est encore valide
+  if (spotifyToken && Date.now() < tokenExpiry) {
+    return spotifyToken;
+  }
+
+  try {
+    const credentials = Buffer.from(
+      `${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`
+    ).toString('base64');
+
+    const response = await axios.post(
+      'https://accounts.spotify.com/api/token',
+      'grant_type=client_credentials',
+      {
+        headers: {
+          'Authorization': `Basic ${credentials}`,
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      }
+    );
+
+    spotifyToken = response.data.access_token;
+    // Le token expire dans 3600 secondes, on le garde 3500 pour être sûr
+    tokenExpiry = Date.now() + (3500 * 1000);
+
+    console.log('✅ Token Spotify obtenu');
+    return spotifyToken;
+  } catch (error) {
+    console.error('❌ Erreur auth Spotify:', error.message);
+    throw new Error('Impossible d\'obtenir le token Spotify');
+  }
+}
 
 function generateRoomCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -30,60 +69,6 @@ function generateRoomCode() {
 // 🧪 PAGE DE TEST CORS
 app.get('/test-cors', (req, res) => {
   res.sendFile(__dirname + '/test-cors.html');
-});
-
-// 🆕 PROXY AUDIO POUR CONTOURNER CORS
-app.get('/proxy-audio', async (req, res) => {
-  const { url } = req.query;
-
-  if (!url) {
-    return res.status(400).send('URL manquante');
-  }
-
-  try {
-    const response = await axios.get(url, {
-      responseType: 'stream',
-      timeout: 30000, // 30 secondes de timeout
-      headers: {
-        'User-Agent': 'Mozilla/5.0',
-        'Accept': 'audio/mpeg'
-      }
-    });
-
-    // Transmettre tous les headers importants
-    res.setHeader('Content-Type', 'audio/mpeg');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Cache-Control', 'public, max-age=3600');
-
-    // ✅ Transmettre Content-Length pour que le navigateur sache la taille
-    if (response.headers['content-length']) {
-      res.setHeader('Content-Length', response.headers['content-length']);
-    }
-
-    // ✅ Supporter les requêtes de range (seeking)
-    if (response.headers['accept-ranges']) {
-      res.setHeader('Accept-Ranges', response.headers['accept-ranges']);
-    }
-
-    // ✅ Gérer les erreurs de streaming
-    response.data.on('error', (err) => {
-      console.error('❌ Erreur stream audio:', err.message);
-      if (!res.headersSent) {
-        res.status(500).send('Erreur streaming');
-      }
-    });
-
-    // ✅ Pipe le stream avec gestion d'erreur
-    response.data.pipe(res).on('error', (err) => {
-      console.error('❌ Erreur pipe audio:', err.message);
-    });
-
-  } catch (error) {
-    console.error('❌ Erreur proxy audio:', error.message);
-    if (!res.headersSent) {
-      res.status(500).send('Erreur proxy');
-    }
-  }
 });
 
 // 🆕 CORRECTION BUG : selectUniqueTrack ne duplique plus + skip tracks sans preview
@@ -214,7 +199,7 @@ io.on('connection', (socket) => {
     });
   });
 
-  // 🆕 CHARGEMENT PLAYLIST DEEZER AVEC LOGS
+  // 🎵 CHARGEMENT PLAYLIST SPOTIFY (SANS PROXY!)
   socket.on('load_playlist', async ({ roomCode, playlistId }, callback) => {
     const game = games.get(roomCode);
 
@@ -223,29 +208,42 @@ io.on('connection', (socket) => {
     }
 
     try {
-      console.log(`🎵 Chargement playlist Deezer: ${playlistId}`);
+      console.log(`🎵 Chargement playlist Spotify: ${playlistId}`);
 
-      const response = await axios.get(`https://api.deezer.com/playlist/${playlistId}`, {
-        timeout: 10000
-      });
+      // Obtenir le token Spotify
+      const token = await getSpotifyToken();
+
+      // Récupérer la playlist Spotify
+      const response = await axios.get(
+        `https://api.spotify.com/v1/playlists/${playlistId}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          },
+          timeout: 10000
+        }
+      );
 
       if (!response.data || !response.data.tracks) {
         throw new Error('Playlist vide ou invalide');
       }
 
-      const allTracks = response.data.tracks.data;
+      const allTracks = response.data.tracks.items;
 
-      // 🆕 Garder TOUS les tracks mais marquer ceux sans preview
+      // Garder TOUS les tracks mais marquer ceux sans preview
       const playlist = {
         id: response.data.id,
-        title: response.data.title,
-        tracks: allTracks.map(track => ({
-          id: track.id,
-          title: track.title,
-          artist: { name: track.artist.name },
-          preview: track.preview || null,
-          hasPreview: !!track.preview  // 🆕 Flag pour savoir si preview existe
-        }))
+        title: response.data.name,
+        tracks: allTracks.map(item => {
+          const track = item.track;
+          return {
+            id: track.id,
+            title: track.name,
+            artist: { name: track.artists[0]?.name || 'Unknown' },
+            preview: track.preview_url || null,
+            hasPreview: !!track.preview_url
+          };
+        })
       };
 
       const tracksWithPreview = playlist.tracks.filter(t => t.hasPreview).length;
@@ -257,7 +255,7 @@ io.on('connection', (socket) => {
       game.playlist = playlist;
       game.playedTracks.clear();
 
-      console.log(`✅ Playlist: ${playlist.title} (${playlist.tracks.length} titres utilisables)`);
+      console.log(`✅ Playlist Spotify: ${playlist.title} (${playlist.tracks.length} titres utilisables)`);
 
       callback({
         success: true,
@@ -267,10 +265,10 @@ io.on('connection', (socket) => {
         }
       });
     } catch (error) {
-      console.error('❌ Erreur Deezer:', error.message);
+      console.error('❌ Erreur Spotify:', error.message);
       callback({
         success: false,
-        error: 'Impossible de charger la playlist'
+        error: 'Impossible de charger la playlist Spotify'
       });
     }
   });
@@ -300,12 +298,9 @@ io.on('connection', (socket) => {
 
     game.status = 'playing';
 
-    // 🆕 TOUJOURS utiliser le proxy pour éviter CORS
-    const serverUrl = process.env.SERVER_URL || 'http://localhost:3001';
-    const proxiedUrl = `${serverUrl}/proxy-audio?url=${encodeURIComponent(track.preview)}`;
-
+    // 🎵 SPOTIFY URLs fonctionnent directement (CORS activé sur p.scdn.co)
     io.to(roomCode).emit('play_track', {
-      previewUrl: proxiedUrl,  // ✅ Toujours via proxy
+      previewUrl: track.preview,  // ✅ URL Spotify directe, pas de proxy!
       duration: game.config.extractDuration,
       timerDuration: game.config.timerDuration || 10,
       volume: game.config.musicVolume / 100,
@@ -317,7 +312,7 @@ io.on('connection', (socket) => {
       roundNumber: game.playedTracks.size
     });
 
-    console.log(`📡 Track diffusé via proxy: ${track.title}`);
+    console.log(`📡 Track Spotify diffusé: ${track.title}`);
 
     callback({ success: true });
   });
@@ -430,5 +425,6 @@ io.on('connection', (socket) => {
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`🚀 Serveur sur le port ${PORT}`);
-  console.log(`🔊 Proxy audio disponible: http://localhost:${PORT}/proxy-audio`);
+  console.log(`🎵 Spotify API intégrée - Pas de proxy nécessaire!`);
+  console.log(`✅ CORS natif sur les URLs Spotify (p.scdn.co)`);
 });
