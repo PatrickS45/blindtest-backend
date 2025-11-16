@@ -32,7 +32,7 @@ app.get('/test-cors', (req, res) => {
   res.sendFile(__dirname + '/test-cors.html');
 });
 
-// 🆕 PROXY AUDIO POUR CONTOURNER CORS
+// 🆕 PROXY AUDIO POUR CONTOURNER CORS - VERSION AMÉLIORÉE
 app.get('/proxy-audio', async (req, res) => {
   const { url } = req.query;
 
@@ -41,47 +41,96 @@ app.get('/proxy-audio', async (req, res) => {
   }
 
   try {
+    // Préparer les headers pour la requête
+    const requestHeaders = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'Accept': 'audio/mpeg,audio/*;q=0.9,*/*;q=0.8',
+      'Accept-Encoding': 'identity',
+      'Connection': 'keep-alive'
+    };
+
+    // Supporter les Range requests pour le buffering progressif
+    if (req.headers.range) {
+      requestHeaders['Range'] = req.headers.range;
+    }
+
     const response = await axios.get(url, {
       responseType: 'stream',
-      timeout: 30000, // 30 secondes de timeout
-      headers: {
-        'User-Agent': 'Mozilla/5.0',
-        'Accept': 'audio/mpeg'
-      }
+      timeout: 60000, // 60 secondes de timeout
+      maxRedirects: 5,
+      headers: requestHeaders,
+      // Désactiver la décompression automatique pour garder le stream intact
+      decompress: false
     });
 
-    // Transmettre tous les headers importants
-    res.setHeader('Content-Type', 'audio/mpeg');
+    // Configurer les headers de réponse
+    const contentType = response.headers['content-type'] || 'audio/mpeg';
+    const contentLength = response.headers['content-length'];
+
+    // Headers CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Range');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges');
+
+    // Headers de contenu
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Accept-Ranges', 'bytes');
     res.setHeader('Cache-Control', 'public, max-age=3600');
 
-    // ✅ Transmettre Content-Length pour que le navigateur sache la taille
-    if (response.headers['content-length']) {
-      res.setHeader('Content-Length', response.headers['content-length']);
+    // Si c'est une requête Range, on envoie un 206 Partial Content
+    if (response.status === 206) {
+      res.status(206);
+      if (response.headers['content-range']) {
+        res.setHeader('Content-Range', response.headers['content-range']);
+      }
     }
 
-    // ✅ Supporter les requêtes de range (seeking)
-    if (response.headers['accept-ranges']) {
-      res.setHeader('Accept-Ranges', response.headers['accept-ranges']);
+    if (contentLength) {
+      res.setHeader('Content-Length', contentLength);
     }
 
-    // ✅ Gérer les erreurs de streaming
+    // Désactiver le timeout sur la réponse
+    res.setTimeout(0);
+
+    // Logger le début du streaming
+    console.log(`🎵 Streaming audio: ${url.substring(0, 60)}...`);
+
+    // Gérer les erreurs de stream
     response.data.on('error', (err) => {
-      console.error('❌ Erreur stream audio:', err.message);
+      console.error('❌ Erreur stream:', err.message);
       if (!res.headersSent) {
-        res.status(500).send('Erreur streaming');
+        res.status(500).end();
+      } else {
+        res.end();
       }
     });
 
-    // ✅ Pipe le stream avec gestion d'erreur
+    // Gérer la fermeture de connexion côté client
+    req.on('close', () => {
+      if (response.data && !response.data.destroyed) {
+        response.data.destroy();
+      }
+    });
+
+    // Streamer les données
     response.data.pipe(res).on('error', (err) => {
-      console.error('❌ Erreur pipe audio:', err.message);
+      console.error('❌ Erreur pipe:', err.message);
+      if (!res.headersSent) {
+        res.status(500).end();
+      }
+    }).on('finish', () => {
+      console.log('✅ Streaming terminé');
     });
 
   } catch (error) {
     console.error('❌ Erreur proxy audio:', error.message);
+    if (error.response) {
+      console.error('   Status:', error.response.status);
+      console.error('   Headers:', error.response.headers);
+    }
     if (!res.headersSent) {
-      res.status(500).send('Erreur proxy');
+      res.status(error.response?.status || 500).send('Erreur proxy');
     }
   }
 });
