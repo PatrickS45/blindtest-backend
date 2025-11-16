@@ -43,19 +43,46 @@ app.get('/proxy-audio', async (req, res) => {
   try {
     const response = await axios.get(url, {
       responseType: 'stream',
+      timeout: 30000, // 30 secondes de timeout
       headers: {
-        'User-Agent': 'Mozilla/5.0'
+        'User-Agent': 'Mozilla/5.0',
+        'Accept': 'audio/mpeg'
       }
     });
 
+    // Transmettre tous les headers importants
     res.setHeader('Content-Type', 'audio/mpeg');
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Cache-Control', 'public, max-age=3600');
 
-    response.data.pipe(res);
+    // ✅ Transmettre Content-Length pour que le navigateur sache la taille
+    if (response.headers['content-length']) {
+      res.setHeader('Content-Length', response.headers['content-length']);
+    }
+
+    // ✅ Supporter les requêtes de range (seeking)
+    if (response.headers['accept-ranges']) {
+      res.setHeader('Accept-Ranges', response.headers['accept-ranges']);
+    }
+
+    // ✅ Gérer les erreurs de streaming
+    response.data.on('error', (err) => {
+      console.error('❌ Erreur stream audio:', err.message);
+      if (!res.headersSent) {
+        res.status(500).send('Erreur streaming');
+      }
+    });
+
+    // ✅ Pipe le stream avec gestion d'erreur
+    response.data.pipe(res).on('error', (err) => {
+      console.error('❌ Erreur pipe audio:', err.message);
+    });
+
   } catch (error) {
     console.error('❌ Erreur proxy audio:', error.message);
-    res.status(500).send('Erreur proxy');
+    if (!res.headersSent) {
+      res.status(500).send('Erreur proxy');
+    }
   }
 });
 
