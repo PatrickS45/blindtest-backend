@@ -32,7 +32,12 @@ async function authenticateSpotify() {
   } catch (error) {
     logger.error('❌ Spotify authentication failed', {
       error: error.message,
-      statusCode: error.statusCode
+      statusCode: error.statusCode,
+      body: error.body,
+      hasClientId: !!process.env.SPOTIFY_CLIENT_ID,
+      hasClientSecret: !!process.env.SPOTIFY_CLIENT_SECRET,
+      clientIdLength: process.env.SPOTIFY_CLIENT_ID?.length || 0,
+      clientSecretLength: process.env.SPOTIFY_CLIENT_SECRET?.length || 0
     });
 
     // Réessayer après 10 secondes en cas d'échec
