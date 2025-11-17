@@ -23,6 +23,10 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 const app = express();
 const server = http.createServer(app);
 
+// Trust proxy - Required for Render.com and other reverse proxies
+// This allows express-rate-limit to correctly identify users via X-Forwarded-For
+app.set('trust proxy', true);
+
 // ==================== MIDDLEWARE ====================
 
 // Body parser
