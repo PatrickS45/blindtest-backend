@@ -201,13 +201,21 @@ function setupSocketHandlers(io) {
 
         const game = games.get(roomCode);
         if (!game || game.hostId !== socket.id) {
-          return callback({ success: false, error: ERRORS.UNAUTHORIZED });
+          const response = { success: false, error: ERRORS.UNAUTHORIZED };
+          if (typeof callback === 'function') {
+            return callback(response);
+          }
+          return socket.emit('playlist_loaded', response);
         }
 
         // Extraire l'ID de playlist
         const playlistId = validators.extractPlaylistId(rawPlaylistId);
         if (!playlistId) {
-          return callback({ success: false, error: ERRORS.INVALID_PLAYLIST_ID });
+          const response = { success: false, error: ERRORS.INVALID_PLAYLIST_ID };
+          if (typeof callback === 'function') {
+            return callback(response);
+          }
+          return socket.emit('playlist_loaded', response);
         }
 
         logger.info('Loading playlist', { roomCode, playlistId });
@@ -225,7 +233,7 @@ function setupSocketHandlers(io) {
           image: playlist.image
         });
 
-        callback({
+        const response = {
           success: true,
           playlist: {
             id: playlist.id,
@@ -233,16 +241,26 @@ function setupSocketHandlers(io) {
             trackCount: playlist.usableTracks,
             image: playlist.image
           }
-        });
+        };
+
+        if (typeof callback === 'function') {
+          callback(response);
+        }
 
       } catch (error) {
-        logger.error('Failed to load playlist', { error: error.message });
-        callback({
+        logger.error('Failed to load playlist', { error: error.message, stack: error.stack });
+        const response = {
           success: false,
           error: error.message === ERRORS.INSUFFICIENT_TRACKS
             ? ERRORS.INSUFFICIENT_TRACKS
             : ERRORS.SPOTIFY_ERROR
-        });
+        };
+
+        if (typeof callback === 'function') {
+          callback(response);
+        } else {
+          socket.emit('playlist_loaded', response);
+        }
       }
     });
 
