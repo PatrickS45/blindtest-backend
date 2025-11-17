@@ -1,19 +1,31 @@
 {
-  "name": "blindtest-server",
-  "version": "1.0.0",
-  "main": "server.js",
+  "name": "blindtest-backend",
+  "version": "2.0.0",
+  "description": "Backend multi-modes Buzz! Blind Test with Spotify API",
+  "main": "src/index.js",
   "scripts": {
-    "dev": "nodemon server.js",
-    "start": "node server.js"
+    "dev": "nodemon src/index.js",
+    "start": "node src/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
+  "keywords": ["blindtest", "spotify", "socketio", "buzz", "game"],
+  "author": "Paddy Sancho",
+  "license": "ISC",
   "dependencies": {
-    "express": "^4.18.0",
+    "express": "^4.18.2",
     "socket.io": "^4.7.0",
-    "cors": "^2.8.5",
+    "spotify-web-api-node": "^5.0.2",
     "axios": "^1.6.0",
-    "dotenv": "^16.3.0"
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express-rate-limit": "^7.1.5",
+    "winston": "^3.11.0",
+    "node-cache": "^5.1.2"
   },
   "devDependencies": {
-    "nodemon": "^3.0.0"
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
