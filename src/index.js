@@ -181,16 +181,38 @@ process.on('SIGINT', () => {
 });
 
 process.on('uncaughtException', (error) => {
+  // Log to console first (synchronous, always works)
+  console.error('❌ UNCAUGHT EXCEPTION ❌');
+  console.error('Error:', error.message);
+  console.error('Stack:', error.stack);
+  console.error('Name:', error.name);
+
+  // Also log with Winston
   logger.error('Uncaught exception', {
     error: error.message,
-    stack: error.stack
+    stack: error.stack,
+    name: error.name
   });
-  process.exit(1);
+
+  // Give logger time to flush before exiting
+  setTimeout(() => {
+    process.exit(1);
+  }, 1000);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
+  // Log to console first
+  console.error('❌ UNHANDLED REJECTION ❌');
+  console.error('Reason:', reason);
+  console.error('Promise:', promise);
+
+  // Also log with Winston
   logger.error('Unhandled rejection', {
-    reason,
+    reason: reason instanceof Error ? {
+      message: reason.message,
+      stack: reason.stack,
+      name: reason.name
+    } : reason,
     promise
   });
 });
