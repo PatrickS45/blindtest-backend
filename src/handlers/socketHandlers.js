@@ -66,10 +66,14 @@ function setupSocketHandlers(io) {
       try {
         // Vérifier la limite de parties actives
         if (games.size >= LIMITS.MAX_ACTIVE_GAMES) {
-          return callback({
+          const response = {
             success: false,
             error: 'Serveur plein, réessayez dans quelques minutes'
-          });
+          };
+          if (typeof callback === 'function') {
+            return callback(response);
+          }
+          return socket.emit('game_created', response);
         }
 
         const mode = data?.mode || GAME_MODES.ACCUMUL_POINTS;
@@ -87,11 +91,24 @@ function setupSocketHandlers(io) {
 
         logger.info('Game created', { roomCode, mode, hostId: socket.id });
 
-        callback({ success: true, roomCode, mode, config });
+        const response = { success: true, roomCode, mode, config };
+
+        // Support both callback and event emission
+        if (typeof callback === 'function') {
+          callback(response);
+        } else {
+          socket.emit('game_created', response);
+        }
 
       } catch (error) {
-        logger.error('Failed to create game', { error: error.message });
-        callback({ success: false, error: error.message });
+        logger.error('Failed to create game', { error: error.message, stack: error.stack });
+        const response = { success: false, error: error.message };
+
+        if (typeof callback === 'function') {
+          callback(response);
+        } else {
+          socket.emit('game_created', response);
+        }
       }
     });
 
