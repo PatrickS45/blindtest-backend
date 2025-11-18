@@ -232,6 +232,48 @@ function setupSocketHandlers(io) {
       }
     });
 
+    // ==================== REJOINDRE COMME HÔTE (RECONNEXION) ====================
+    socket.on('join_as_host', (data) => {
+      try {
+        const { roomCode } = data;
+
+        const game = games.get(roomCode);
+        if (!game) {
+          logger.warn('Host tried to join non-existent game', { roomCode, socketId: socket.id });
+          socket.emit('error', { message: 'Partie introuvable' });
+          return;
+        }
+
+        // Mettre à jour l'ID du socket de l'hôte (reconnexion)
+        const oldHostId = game.hostId;
+        game.hostId = socket.id;
+        socket.join(roomCode);
+
+        logger.info('Host reconnected', {
+          roomCode,
+          oldSocketId: oldHostId,
+          newSocketId: socket.id
+        });
+
+        // Envoyer l'état actuel de la partie à l'hôte
+        socket.emit('game_state', {
+          roomCode,
+          players: game.getPlayersArray(),
+          mode: game.mode,
+          status: game.status,
+          playlist: game.playlist ? {
+            name: game.playlist.name,
+            trackCount: game.playlist.usableTracks
+          } : null,
+          roundNumber: game.roundNumber
+        });
+
+      } catch (error) {
+        logger.error('Failed to join as host', { error: error.message, stack: error.stack });
+        socket.emit('error', { message: error.message });
+      }
+    });
+
     // ==================== CHARGER PLAYLIST ====================
     socket.on('load_playlist', async (data, callback) => {
       try {
@@ -529,11 +571,24 @@ function setupSocketHandlers(io) {
           logger.info('Player left', { roomCode, playerName: player.name });
         }
 
-        // Si c'est l'hôte, supprimer la partie
+        // Si c'est l'hôte, NE PAS supprimer immédiatement
+        // Garder la partie active pour reconnexion (par exemple lors du changement de page)
         if (game.hostId === socket.id) {
-          games.delete(roomCode);
-          io.to(roomCode).emit('game_ended', { reason: 'Host disconnected' });
-          logger.info('Game deleted (host left)', { roomCode });
+          logger.info('Host disconnected - keeping game alive for reconnection', { roomCode });
+
+          // Notifier que l'hôte s'est déconnecté (les clients peuvent afficher un message)
+          io.to(roomCode).emit('host_disconnected');
+
+          // Supprimer la partie après 60 secondes si l'hôte ne se reconnecte pas
+          setTimeout(() => {
+            const currentGame = games.get(roomCode);
+            // Vérifier que la partie existe toujours et que l'hôte n'a pas changé
+            if (currentGame && currentGame.hostId === socket.id) {
+              games.delete(roomCode);
+              io.to(roomCode).emit('game_ended', { reason: 'Host disconnected' });
+              logger.info('Game deleted (host reconnection timeout)', { roomCode });
+            }
+          }, 60000); // 60 secondes de grâce pour reconnexion
         }
       });
     });
