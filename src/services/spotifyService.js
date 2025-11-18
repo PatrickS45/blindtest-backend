@@ -95,10 +95,18 @@ class SpotifyService {
       return playlist;
 
     } catch (error) {
+      // Log the REAL error first
+      console.error('❌ SPOTIFY API RAW ERROR:');
+      console.error('Message:', error.message);
+      console.error('Status Code:', error.statusCode);
+      console.error('Body:', error.body);
+      console.error('Full Error:', error);
+
       logger.error('Failed to load playlist', {
         playlistId,
         error: error.message,
-        statusCode: error.statusCode
+        statusCode: error.statusCode,
+        body: error.body
       });
 
       if (error.message === ERRORS.INSUFFICIENT_TRACKS) {
