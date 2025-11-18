@@ -55,7 +55,8 @@ class SpotifyService {
     try {
       await this.waitIfNeeded();
 
-      const response = await spotifyApi.getPlaylist(playlistId);
+      // Add market parameter to ensure playlist is accessible
+      const response = await spotifyApi.getPlaylist(playlistId, { market: 'FR' });
       const playlistData = response.body;
 
       if (!playlistData || !playlistData.tracks) {
