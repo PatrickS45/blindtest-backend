@@ -119,12 +119,20 @@ function setupSocketHandlers(io) {
 
         // Validation
         if (!validators.validateRoomCode(roomCode)) {
-          return callback({ success: false, error: ERRORS.INVALID_ROOM_CODE });
+          const response = { success: false, error: ERRORS.INVALID_ROOM_CODE };
+          if (typeof callback === 'function') {
+            return callback(response);
+          }
+          return socket.emit('game_joined', response);
         }
 
         const game = games.get(roomCode);
         if (!game) {
-          return callback({ success: false, error: ERRORS.GAME_NOT_FOUND });
+          const response = { success: false, error: ERRORS.GAME_NOT_FOUND };
+          if (typeof callback === 'function') {
+            return callback(response);
+          }
+          return socket.emit('game_joined', response);
         }
 
         // Mode Display
@@ -133,24 +141,37 @@ function setupSocketHandlers(io) {
           socket.join(roomCode);
           logger.info('Display joined', { roomCode, displayId: socket.id });
 
-          return callback({
+          const response = {
             success: true,
             isDisplay: true,
             players: game.getPlayersArray(),
             mode: game.mode,
             config: game.config
-          });
+          };
+
+          if (typeof callback === 'function') {
+            return callback(response);
+          }
+          return socket.emit('game_joined', response);
         }
 
         // Validation nom de joueur
         const sanitizedName = validators.sanitizePlayerName(playerName);
         if (!sanitizedName) {
-          return callback({ success: false, error: 'Nom invalide' });
+          const response = { success: false, error: 'Nom invalide' };
+          if (typeof callback === 'function') {
+            return callback(response);
+          }
+          return socket.emit('game_joined', response);
         }
 
         // Vérifier limite de joueurs
         if (game.players.size >= LIMITS.MAX_PLAYERS) {
-          return callback({ success: false, error: ERRORS.MAX_PLAYERS_REACHED });
+          const response = { success: false, error: ERRORS.MAX_PLAYERS_REACHED };
+          if (typeof callback === 'function') {
+            return callback(response);
+          }
+          return socket.emit('game_joined', response);
         }
 
         // Reconnexion
@@ -161,13 +182,18 @@ function setupSocketHandlers(io) {
 
           logger.info('Player reconnected', { roomCode, playerName: sanitizedName });
 
-          return callback({
+          const response = {
             success: true,
             player: existingPlayer,
             players: game.getPlayersArray(),
             mode: game.mode,
             config: game.config
-          });
+          };
+
+          if (typeof callback === 'function') {
+            return callback(response);
+          }
+          return socket.emit('game_joined', response);
         }
 
         // Nouveau joueur
@@ -180,17 +206,29 @@ function setupSocketHandlers(io) {
           players: game.getPlayersArray()
         });
 
-        callback({
+        const response = {
           success: true,
           player,
           players: game.getPlayersArray(),
           mode: game.mode,
           config: game.config
-        });
+        };
+
+        if (typeof callback === 'function') {
+          callback(response);
+        } else {
+          socket.emit('game_joined', response);
+        }
 
       } catch (error) {
-        logger.error('Failed to join game', { error: error.message });
-        callback({ success: false, error: error.message });
+        logger.error('Failed to join game', { error: error.message, stack: error.stack });
+        const response = { success: false, error: error.message };
+
+        if (typeof callback === 'function') {
+          callback(response);
+        } else {
+          socket.emit('game_joined', response);
+        }
       }
     });
 
@@ -271,11 +309,19 @@ function setupSocketHandlers(io) {
 
         const game = games.get(roomCode);
         if (!game || game.hostId !== socket.id) {
-          return callback({ success: false, error: ERRORS.UNAUTHORIZED });
+          const response = { success: false, error: ERRORS.UNAUTHORIZED };
+          if (typeof callback === 'function') {
+            return callback(response);
+          }
+          return socket.emit('round_started', response);
         }
 
         if (!game.playlist) {
-          return callback({ success: false, error: ERRORS.NO_PLAYLIST });
+          const response = { success: false, error: ERRORS.NO_PLAYLIST };
+          if (typeof callback === 'function') {
+            return callback(response);
+          }
+          return socket.emit('round_started', response);
         }
 
         // Démarrer le round via le moteur
@@ -290,11 +336,19 @@ function setupSocketHandlers(io) {
           ...roundData
         });
 
-        callback({ success: true });
+        if (typeof callback === 'function') {
+          callback({ success: true });
+        }
 
       } catch (error) {
-        logger.error('Failed to start round', { error: error.message });
-        callback({ success: false, error: error.message });
+        logger.error('Failed to start round', { error: error.message, stack: error.stack });
+        const response = { success: false, error: error.message };
+
+        if (typeof callback === 'function') {
+          callback(response);
+        } else {
+          socket.emit('round_started', response);
+        }
       }
     });
 
@@ -333,17 +387,31 @@ function setupSocketHandlers(io) {
 
         const game = games.get(roomCode);
         if (!game) {
-          return callback({ success: false, error: ERRORS.GAME_NOT_FOUND });
+          const response = { success: false, error: ERRORS.GAME_NOT_FOUND };
+          if (typeof callback === 'function') {
+            return callback(response);
+          }
+          return socket.emit('qcm_answer_received', response);
         }
 
         // Enregistrer la réponse
         gameEngine.handleQCMAnswer(game, socket.id, optionIndex);
 
-        callback({ success: true });
+        if (typeof callback === 'function') {
+          callback({ success: true });
+        } else {
+          socket.emit('qcm_answer_received', { success: true });
+        }
 
       } catch (error) {
-        logger.error('QCM answer error', { error: error.message });
-        callback({ success: false, error: error.message });
+        logger.error('QCM answer error', { error: error.message, stack: error.stack });
+        const response = { success: false, error: error.message };
+
+        if (typeof callback === 'function') {
+          callback(response);
+        } else {
+          socket.emit('qcm_answer_received', response);
+        }
       }
     });
 
