@@ -328,7 +328,18 @@ function setupSocketHandlers(io) {
         }
 
       } catch (error) {
-        logger.error('Failed to load playlist', { error: error.message, stack: error.stack });
+        // Log with console.error for immediate visibility
+        console.error('❌ PLAYLIST LOAD ERROR:', error.message);
+        console.error('Stack:', error.stack);
+        console.error('Playlist ID:', data.playlistId);
+
+        logger.error('Failed to load playlist', {
+          error: error.message,
+          stack: error.stack,
+          playlistId: data.playlistId,
+          roomCode: data.roomCode
+        });
+
         const response = {
           success: false,
           error: error.message === ERRORS.INSUFFICIENT_TRACKS
