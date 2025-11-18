@@ -529,11 +529,24 @@ function setupSocketHandlers(io) {
           logger.info('Player left', { roomCode, playerName: player.name });
         }
 
-        // Si c'est l'hôte, supprimer la partie
+        // Si c'est l'hôte, NE PAS supprimer immédiatement
+        // Garder la partie active pour reconnexion (par exemple lors du changement de page)
         if (game.hostId === socket.id) {
-          games.delete(roomCode);
-          io.to(roomCode).emit('game_ended', { reason: 'Host disconnected' });
-          logger.info('Game deleted (host left)', { roomCode });
+          logger.info('Host disconnected - keeping game alive for reconnection', { roomCode });
+
+          // Notifier que l'hôte s'est déconnecté (les clients peuvent afficher un message)
+          io.to(roomCode).emit('host_disconnected');
+
+          // Supprimer la partie après 60 secondes si l'hôte ne se reconnecte pas
+          setTimeout(() => {
+            const currentGame = games.get(roomCode);
+            // Vérifier que la partie existe toujours et que l'hôte n'a pas changé
+            if (currentGame && currentGame.hostId === socket.id) {
+              games.delete(roomCode);
+              io.to(roomCode).emit('game_ended', { reason: 'Host disconnected' });
+              logger.info('Game deleted (host reconnection timeout)', { roomCode });
+            }
+          }, 60000); // 60 secondes de grâce pour reconnexion
         }
       });
     });
