@@ -232,6 +232,48 @@ function setupSocketHandlers(io) {
       }
     });
 
+    // ==================== REJOINDRE COMME HÔTE (RECONNEXION) ====================
+    socket.on('join_as_host', (data) => {
+      try {
+        const { roomCode } = data;
+
+        const game = games.get(roomCode);
+        if (!game) {
+          logger.warn('Host tried to join non-existent game', { roomCode, socketId: socket.id });
+          socket.emit('error', { message: 'Partie introuvable' });
+          return;
+        }
+
+        // Mettre à jour l'ID du socket de l'hôte (reconnexion)
+        const oldHostId = game.hostId;
+        game.hostId = socket.id;
+        socket.join(roomCode);
+
+        logger.info('Host reconnected', {
+          roomCode,
+          oldSocketId: oldHostId,
+          newSocketId: socket.id
+        });
+
+        // Envoyer l'état actuel de la partie à l'hôte
+        socket.emit('game_state', {
+          roomCode,
+          players: game.getPlayersArray(),
+          mode: game.mode,
+          status: game.status,
+          playlist: game.playlist ? {
+            name: game.playlist.name,
+            trackCount: game.playlist.usableTracks
+          } : null,
+          roundNumber: game.roundNumber
+        });
+
+      } catch (error) {
+        logger.error('Failed to join as host', { error: error.message, stack: error.stack });
+        socket.emit('error', { message: error.message });
+      }
+    });
+
     // ==================== CHARGER PLAYLIST ====================
     socket.on('load_playlist', async (data, callback) => {
       try {
