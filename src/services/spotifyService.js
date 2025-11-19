@@ -71,15 +71,36 @@ class SpotifyService {
       // Attempt 1: Try getting playlist metadata AND tracks together
       try {
         console.log('Attempt 1: Trying /playlists/{id} endpoint...');
-        const response = await axios.get(`https://api.spotify.com/v1/playlists/${playlistId}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
+
+        // Try multiple market strategies
+        const marketStrategies = hasValidUserToken()
+          ? ['from_token', 'US', 'FR', 'GB']
+          : ['US', 'FR', 'GB'];
+
+        let lastError;
+        for (const market of marketStrategies) {
+          try {
+            console.log(`  Trying with market=${market}...`);
+            const response = await axios.get(`https://api.spotify.com/v1/playlists/${playlistId}`, {
+              headers: {
+                'Authorization': `Bearer ${token}`
+              },
+              params: { market }
+            });
+            playlistData = response.data;
+            console.log(`✅ Success with /playlists/{id} and market=${market}`);
+            break;
+          } catch (marketErr) {
+            console.log(`  ❌ market=${market} failed:`, marketErr.response?.status);
+            lastError = marketErr;
           }
-        });
-        playlistData = response.data;
-        console.log('✅ Success with /playlists/{id}');
+        }
+
+        if (!playlistData) {
+          throw lastError;
+        }
       } catch (err) {
-        console.log('❌ Failed with /playlists/{id}, status:', err.response?.status);
+        console.log('❌ All market attempts failed for /playlists/{id}, status:', err.response?.status);
 
         // Attempt 2: Try getting just the tracks (may work with Client Credentials)
         console.log('Attempt 2: Trying /playlists/{id}/tracks endpoint...');
