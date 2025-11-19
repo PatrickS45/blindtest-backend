@@ -55,19 +55,24 @@ class SpotifyService {
     try {
       await this.waitIfNeeded();
 
-      // 🔍 DEBUG: Log request details
-      console.log('🔍 DEBUG: Attempting to fetch playlist');
+      // 🔧 Use direct API call instead of buggy library
+      console.log('🔍 DEBUG: Fetching playlist via direct API call');
       console.log('Playlist ID:', playlistId);
-      console.log('Has access token:', !!spotifyApi.getAccessToken());
-      console.log('Access token (first 20 chars):', spotifyApi.getAccessToken()?.substring(0, 20) + '...');
 
-      // Try WITHOUT market parameter first to isolate the issue
-      console.log('Calling spotifyApi.getPlaylist...');
-      const response = await spotifyApi.getPlaylist(playlistId);
-      const playlistData = response.body;
+      const axios = require('axios');
+      const token = spotifyApi.getAccessToken();
+
+      const response = await axios.get(`https://api.spotify.com/v1/playlists/${playlistId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      const playlistData = response.data;
 
       console.log('✅ Playlist fetched successfully!');
       console.log('Playlist name:', playlistData.name);
+      console.log('Total tracks:', playlistData.tracks?.total || 0);
 
       if (!playlistData || !playlistData.tracks) {
         throw new Error(ERRORS.NO_PLAYLIST);
@@ -106,19 +111,28 @@ class SpotifyService {
       return playlist;
 
     } catch (error) {
-      // Log the REAL error first
-      console.error('❌ SPOTIFY API RAW ERROR:');
-      console.error('Message:', error.message);
-      console.error('Status Code:', error.statusCode);
-      console.error('Body:', error.body);
-      console.error('Full Error:', error);
+      // Handle axios errors differently from library errors
+      if (error.response) {
+        // Axios error with response
+        console.error('❌ SPOTIFY API ERROR:');
+        console.error('Status:', error.response.status);
+        console.error('Data:', error.response.data);
+        console.error('Headers:', error.response.headers);
 
-      logger.error('Failed to load playlist', {
-        playlistId,
-        error: error.message,
-        statusCode: error.statusCode,
-        body: error.body
-      });
+        logger.error('Failed to load playlist', {
+          playlistId,
+          error: error.message,
+          statusCode: error.response.status,
+          body: error.response.data
+        });
+      } else {
+        // Other errors (network, etc.)
+        console.error('❌ REQUEST ERROR:', error.message);
+        logger.error('Failed to load playlist', {
+          playlistId,
+          error: error.message
+        });
+      }
 
       if (error.message === ERRORS.INSUFFICIENT_TRACKS) {
         throw error;
