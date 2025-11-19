@@ -30,6 +30,9 @@ app.set('trust proxy', true);
 
 // ==================== MIDDLEWARE ====================
 
+// Static files
+app.use(express.static('public'));
+
 // Body parser
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -134,13 +137,20 @@ app.use((err, req, res, next) => {
 
 async function startServer() {
   try {
-    // Authentifier Spotify
-    logger.info('Authenticating with Spotify...');
-    await authenticateSpotify();
-
-    // Test Spotify credentials
-    logger.info('Testing Spotify credentials...');
-    await spotifyService.testCredentials();
+    // Authentifier Spotify (optionnel - utilisé uniquement si playlists Spotify)
+    let spotifyConfigured = false;
+    try {
+      logger.info('Attempting to authenticate with Spotify...');
+      await authenticateSpotify();
+      await spotifyService.testCredentials();
+      spotifyConfigured = true;
+      logger.info('✅ Spotify API authenticated');
+    } catch (spotifyError) {
+      logger.warn('⚠️ Spotify authentication failed (optional - R2 playlists still available)', {
+        error: spotifyError.message
+      });
+      logger.info('💡 Server will use Cloudflare R2 for music playlists');
+    }
 
     // Démarrer le serveur
     server.listen(PORT, () => {
@@ -152,8 +162,14 @@ async function startServer() {
 
       logger.info('✅ Blindtest Backend v2.0 ready!');
       logger.info('📡 Socket.IO listening for connections');
-      logger.info('🎵 Spotify API authenticated');
+      if (spotifyConfigured) {
+        logger.info('🎵 Spotify API: Enabled');
+      } else {
+        logger.info('🎵 Spotify API: Disabled (using R2 only)');
+      }
+      logger.info('☁️ Cloudflare R2: Enabled');
       logger.info(`🌍 API docs available at http://localhost:${PORT}/`);
+      logger.info(`🎼 Playlist manager available at http://localhost:${PORT}/playlist-manager.html`);
     });
 
   } catch (error) {
