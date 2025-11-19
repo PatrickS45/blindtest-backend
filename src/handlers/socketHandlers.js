@@ -3,7 +3,6 @@
 
 const Game = require('../models/Game');
 const gameEngine = require('../services/gameEngine');
-const spotifyService = require('../services/spotifyService');
 const r2MusicService = require('../services/r2MusicService');
 const validators = require('../utils/validators');
 const logger = require('../utils/logger');
@@ -308,24 +307,11 @@ function setupSocketHandlers(io) {
           return socket.emit('playlist_loaded', response);
         }
 
-        logger.info('Loading playlist', { roomCode, playlistId });
+        logger.info('Loading playlist from R2', { roomCode, playlistId });
 
-        // Détecter le type de playlist (R2 custom ou Spotify)
-        // Les IDs R2 sont des hex 32 caractères, les Spotify sont alphanumériques 22 caractères
-        let playlist;
-        const isR2Playlist = /^[0-9a-f]{32}$/.test(playlistId);
-
-        if (isR2Playlist) {
-          console.log('🎵 Loading playlist from R2 (custom music)');
-          playlist = r2MusicService.getPlaylist(playlistId);
-        } else {
-          console.log('🎵 Loading playlist from Spotify');
-          try {
-            playlist = await spotifyService.getPlaylist(playlistId);
-          } catch (spotifyError) {
-            throw new Error('Spotify is not configured. Please use R2 playlists (32-character hex IDs) or configure Spotify credentials.');
-          }
-        }
+        // Charger la playlist depuis R2
+        console.log('🎵 Loading playlist from Cloudflare R2');
+        const playlist = r2MusicService.getPlaylist(playlistId);
 
         // Sauvegarder dans la partie
         game.setPlaylist(playlist);

@@ -9,11 +9,9 @@ const socketIo = require('socket.io');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 
-const { authenticateSpotify } = require('./config/spotify');
 const { setupSocketHandlers } = require('./handlers/socketHandlers');
 const { setupApiRoutes } = require('./handlers/apiRoutes');
 const logger = require('./utils/logger');
-const spotifyService = require('./services/spotifyService');
 
 // ==================== CONFIGURATION ====================
 const PORT = process.env.PORT || 3001;
@@ -92,9 +90,12 @@ app.get('/', (req, res) => {
     name: 'Blindtest Backend API',
     version: '2.0.0',
     status: 'running',
+    storage: 'Cloudflare R2',
     endpoints: {
       health: '/api/health',
-      playlist: '/api/spotify/playlist/:id',
+      playlistManager: '/playlist-manager.html',
+      music: '/api/music',
+      playlists: '/api/music/playlists',
       gameStatus: '/api/game/:roomCode/status',
       games: '/api/games',
       metrics: '/api/metrics'
@@ -137,21 +138,6 @@ app.use((err, req, res, next) => {
 
 async function startServer() {
   try {
-    // Authentifier Spotify (optionnel - utilisé uniquement si playlists Spotify)
-    let spotifyConfigured = false;
-    try {
-      logger.info('Attempting to authenticate with Spotify...');
-      await authenticateSpotify();
-      await spotifyService.testCredentials();
-      spotifyConfigured = true;
-      logger.info('✅ Spotify API authenticated');
-    } catch (spotifyError) {
-      logger.warn('⚠️ Spotify authentication failed (optional - R2 playlists still available)', {
-        error: spotifyError.message
-      });
-      logger.info('💡 Server will use Cloudflare R2 for music playlists');
-    }
-
     // Démarrer le serveur
     server.listen(PORT, () => {
       logger.info('🚀 Server started', {
@@ -162,12 +148,7 @@ async function startServer() {
 
       logger.info('✅ Blindtest Backend v2.0 ready!');
       logger.info('📡 Socket.IO listening for connections');
-      if (spotifyConfigured) {
-        logger.info('🎵 Spotify API: Enabled');
-      } else {
-        logger.info('🎵 Spotify API: Disabled (using R2 only)');
-      }
-      logger.info('☁️ Cloudflare R2: Enabled');
+      logger.info('☁️ Cloudflare R2: Music storage enabled');
       logger.info(`🌍 API docs available at http://localhost:${PORT}/`);
       logger.info(`🎼 Playlist manager available at http://localhost:${PORT}/playlist-manager.html`);
     });
