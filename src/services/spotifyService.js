@@ -248,9 +248,32 @@ class SpotifyService {
   async testCredentials() {
     console.log('\n🧪 TESTING SPOTIFY CREDENTIALS...\n');
 
+    // First, try a DIRECT API call to bypass the library
+    try {
+      console.log('🔧 Direct API Test: Calling Spotify API directly...');
+      const axios = require('axios');
+      const token = spotifyApi.getAccessToken();
+
+      // Try to get a specific track (should always work with valid token)
+      const trackResponse = await axios.get('https://api.spotify.com/v1/tracks/11dFghVXANMlKmJXsNCbNl', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      console.log('✅ Direct API call SUCCESS! Track:', trackResponse.data.name);
+      console.log('   Artist:', trackResponse.data.artists[0].name);
+
+    } catch (error) {
+      console.error('❌ Direct API call FAILED!');
+      console.error('Status:', error.response?.status);
+      console.error('Data:', error.response?.data);
+      console.error('This means the token itself is invalid or expired');
+      return false;
+    }
+
     try {
       // Test 1: Get available genre seeds (devrait toujours fonctionner)
-      console.log('Test 1: Getting genre seeds...');
+      console.log('\nTest 1: Getting genre seeds...');
       const genres = await spotifyApi.getAvailableGenreSeeds();
       console.log('✅ Genre seeds OK:', genres.body.genres.slice(0, 5));
 
@@ -269,18 +292,15 @@ class SpotifyService {
       console.log('\n✅ ALL TESTS PASSED!\n');
       return true;
     } catch (error) {
-      console.error('\n❌ TEST FAILED:');
+      console.error('\n❌ LIBRARY TEST FAILED:');
       console.error('Error name:', error.name);
       console.error('Message:', error.message);
       console.error('Status Code:', error.statusCode);
       console.error('Body:', JSON.stringify(error.body, null, 2));
       console.error('Headers:', JSON.stringify(error.headers, null, 2));
-      console.error('Full error object:', error);
-      console.error('\n⚠️ THIS INDICATES A PROBLEM WITH YOUR SPOTIFY CREDENTIALS!');
-      console.error('Please check:');
-      console.error('1. Your Client ID and Secret are correct');
-      console.error('2. Your Spotify App still exists at https://developer.spotify.com/dashboard');
-      console.error('3. Your credentials haven\'t been revoked or deleted\n');
+      console.error('\n⚠️ The direct API call worked, but the library calls fail.');
+      console.error('This might be a bug in spotify-web-api-node v5.0.2');
+      console.error('Let\'s try to use the playlist directly...\n');
       return false;
     }
   }
