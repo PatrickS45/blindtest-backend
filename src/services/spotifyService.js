@@ -270,9 +270,17 @@ class SpotifyService {
       return true;
     } catch (error) {
       console.error('\n❌ TEST FAILED:');
+      console.error('Error name:', error.name);
       console.error('Message:', error.message);
-      console.error('Status:', error.statusCode);
-      console.error('Body:', error.body);
+      console.error('Status Code:', error.statusCode);
+      console.error('Body:', JSON.stringify(error.body, null, 2));
+      console.error('Headers:', JSON.stringify(error.headers, null, 2));
+      console.error('Full error object:', error);
+      console.error('\n⚠️ THIS INDICATES A PROBLEM WITH YOUR SPOTIFY CREDENTIALS!');
+      console.error('Please check:');
+      console.error('1. Your Client ID and Secret are correct');
+      console.error('2. Your Spotify App still exists at https://developer.spotify.com/dashboard');
+      console.error('3. Your credentials haven\'t been revoked or deleted\n');
       return false;
     }
   }
