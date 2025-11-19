@@ -89,26 +89,29 @@ router.get('/playlists', async (req, res) => {
       });
     }
 
-    // Test 4: Try with market parameter
-    try {
-      console.log('\nTest 4: Fetching with market=FR parameter...');
-      const withMarket = await axios.get('https://api.spotify.com/v1/playlists/37i9dQZF1DXcBWIGoYBM5M', {
-        headers: { 'Authorization': `Bearer ${token}` },
-        params: { market: 'FR' }
-      });
-      console.log('✅ With market parameter OK:', withMarket.data.name);
-      results.tests.push({
-        name: 'With market=FR',
-        success: true,
-        playlist: { id: withMarket.data.id, name: withMarket.data.name }
-      });
-    } catch (err) {
-      console.log('❌ With market parameter failed:', err.response?.status, err.response?.data);
-      results.tests.push({
-        name: 'With market=FR',
-        success: false,
-        error: err.response?.data || err.message
-      });
+    // Test 4: Try with different market parameters
+    const markets = ['FR', 'US', 'GB', 'from_token'];
+    for (const market of markets) {
+      try {
+        console.log(`\nTest 4.${markets.indexOf(market) + 1}: Fetching with market=${market}...`);
+        const withMarket = await axios.get('https://api.spotify.com/v1/playlists/37i9dQZF1DXcBWIGoYBM5M', {
+          headers: { 'Authorization': `Bearer ${token}` },
+          params: { market }
+        });
+        console.log(`✅ With market=${market} OK:`, withMarket.data.name);
+        results.tests.push({
+          name: `With market=${market}`,
+          success: true,
+          playlist: { id: withMarket.data.id, name: withMarket.data.name }
+        });
+      } catch (err) {
+        console.log(`❌ With market=${market} failed:`, err.response?.status, err.response?.data);
+        results.tests.push({
+          name: `With market=${market}`,
+          success: false,
+          error: err.response?.data || err.message
+        });
+      }
     }
 
     res.json(results);
