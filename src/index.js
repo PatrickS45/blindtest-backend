@@ -13,6 +13,7 @@ const { authenticateSpotify } = require('./config/spotify');
 const { setupSocketHandlers } = require('./handlers/socketHandlers');
 const { setupApiRoutes } = require('./handlers/apiRoutes');
 const logger = require('./utils/logger');
+const spotifyService = require('./services/spotifyService');
 
 // ==================== CONFIGURATION ====================
 const PORT = process.env.PORT || 3001;
@@ -134,6 +135,10 @@ async function startServer() {
     // Authentifier Spotify
     logger.info('Authenticating with Spotify...');
     await authenticateSpotify();
+
+    // Test Spotify credentials
+    logger.info('Testing Spotify credentials...');
+    await spotifyService.testCredentials();
 
     // Démarrer le serveur
     server.listen(PORT, () => {
