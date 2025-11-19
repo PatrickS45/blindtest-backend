@@ -1,7 +1,7 @@
 // src/services/spotifyService.js
 // Service pour interagir avec Spotify API avec cache
 
-const { spotifyApi } = require('../config/spotify');
+const { spotifyApi, getActiveToken, hasValidUserToken } = require('../config/spotify');
 const { LIMITS, ERRORS } = require('../config/constants');
 const logger = require('../utils/logger');
 const NodeCache = require('node-cache');
@@ -58,9 +58,10 @@ class SpotifyService {
       // 🔧 Use direct API call instead of buggy library
       console.log('🔍 DEBUG: Fetching playlist via direct API call');
       console.log('Playlist ID:', playlistId);
+      console.log('Using user token:', hasValidUserToken() ? 'YES ✅' : 'NO (app token)');
 
       const axios = require('axios');
-      const token = spotifyApi.getAccessToken();
+      const token = getActiveToken(); // Use user token if available, fallback to app token
 
       // Try multiple approaches to get playlist data
       let playlistData = null;
