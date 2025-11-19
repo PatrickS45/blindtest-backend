@@ -62,6 +62,8 @@ class SpotifyService {
 
       const axios = require('axios');
       const token = getActiveToken(); // Use user token if available, fallback to app token
+      console.log('Token (first 30 chars):', token.substring(0, 30) + '...');
+      console.log('Token length:', token.length);
 
       // Try multiple approaches to get playlist data
       let playlistData = null;

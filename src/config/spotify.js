@@ -5,11 +5,14 @@ const SpotifyWebApi = require('spotify-web-api-node');
 const logger = require('../utils/logger');
 
 // OAuth Configuration
+// Note: Public Spotify playlists should be accessible without special scopes
+// but we include all playlist scopes to be safe
 const SPOTIFY_SCOPES = [
   'playlist-read-private',
   'playlist-read-collaborative',
   'user-read-private',
-  'user-read-email'
+  'user-read-email',
+  'user-library-read'           // Access to user's saved content
 ];
 
 const REDIRECT_URI = process.env.SPOTIFY_REDIRECT_URI || 'http://localhost:3001/api/auth/callback';
