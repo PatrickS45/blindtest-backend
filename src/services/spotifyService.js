@@ -1,7 +1,7 @@
 // src/services/spotifyService.js
 // Service pour interagir avec Spotify API avec cache
 
-const { spotifyApi } = require('../config/spotify');
+const { spotifyApi, getActiveToken, hasValidUserToken } = require('../config/spotify');
 const { LIMITS, ERRORS } = require('../config/constants');
 const logger = require('../utils/logger');
 const NodeCache = require('node-cache');
@@ -58,21 +58,58 @@ class SpotifyService {
       // 🔧 Use direct API call instead of buggy library
       console.log('🔍 DEBUG: Fetching playlist via direct API call');
       console.log('Playlist ID:', playlistId);
+      console.log('Using user token:', hasValidUserToken() ? 'YES ✅' : 'NO (app token)');
 
       const axios = require('axios');
-      const token = spotifyApi.getAccessToken();
+      const token = getActiveToken(); // Use user token if available, fallback to app token
 
-      const response = await axios.get(`https://api.spotify.com/v1/playlists/${playlistId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
+      // Try multiple approaches to get playlist data
+      let playlistData = null;
+
+      // Attempt 1: Try getting playlist metadata AND tracks together
+      try {
+        console.log('Attempt 1: Trying /playlists/{id} endpoint...');
+        const response = await axios.get(`https://api.spotify.com/v1/playlists/${playlistId}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        playlistData = response.data;
+        console.log('✅ Success with /playlists/{id}');
+      } catch (err) {
+        console.log('❌ Failed with /playlists/{id}, status:', err.response?.status);
+
+        // Attempt 2: Try getting just the tracks (may work with Client Credentials)
+        console.log('Attempt 2: Trying /playlists/{id}/tracks endpoint...');
+        try {
+          const tracksResponse = await axios.get(`https://api.spotify.com/v1/playlists/${playlistId}/tracks`, {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            },
+            params: {
+              limit: 100,
+              fields: 'items(track(id,name,artists,album,preview_url,duration_ms)),total'
+            }
+          });
+
+          // Build minimal playlist object with tracks
+          playlistData = {
+            id: playlistId,
+            name: `Playlist ${playlistId}`, // We don't have the name
+            description: '',
+            images: [],
+            tracks: tracksResponse.data
+          };
+          console.log('✅ Success with /playlists/{id}/tracks');
+        } catch (err2) {
+          console.log('❌ Failed with /playlists/{id}/tracks too, status:', err2.response?.status);
+          throw err; // Throw original error
         }
-      });
+      }
 
-      const playlistData = response.data;
-
-      console.log('✅ Playlist fetched successfully!');
+      console.log('✅ Playlist data obtained!');
       console.log('Playlist name:', playlistData.name);
-      console.log('Total tracks:', playlistData.tracks?.total || 0);
+      console.log('Total tracks:', playlistData.tracks?.total || playlistData.tracks?.items?.length || 0);
 
       if (!playlistData || !playlistData.tracks) {
         throw new Error(ERRORS.NO_PLAYLIST);
@@ -277,6 +314,33 @@ class SpotifyService {
       console.log('✅ Direct API call SUCCESS! Track:', trackResponse.data.name);
       console.log('   Artist:', trackResponse.data.artists[0].name);
 
+      // NEW TEST: Try browse endpoints (should work with Client Credentials)
+      console.log('\n🔧 Testing /browse/featured-playlists...');
+      const featuredResponse = await axios.get('https://api.spotify.com/v1/browse/featured-playlists', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        params: {
+          limit: 5
+        }
+      });
+      console.log('✅ Browse endpoint SUCCESS!');
+      console.log('   Featured playlists:', featuredResponse.data.playlists.items.map(p => p.name).join(', '));
+
+      // NEW TEST: Try recommendations (should work with Client Credentials)
+      console.log('\n🔧 Testing /recommendations...');
+      const recoResponse = await axios.get('https://api.spotify.com/v1/recommendations', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        params: {
+          seed_genres: 'pop,rock',
+          limit: 10
+        }
+      });
+      console.log('✅ Recommendations endpoint SUCCESS!');
+      console.log('   Generated', recoResponse.data.tracks.length, 'tracks');
+
     } catch (error) {
       console.error('❌ Direct API call FAILED!');
       console.error('Status:', error.response?.status);
@@ -314,7 +378,8 @@ class SpotifyService {
       console.error('Headers:', JSON.stringify(error.headers, null, 2));
       console.error('\n⚠️ The direct API call worked, but the library calls fail.');
       console.error('This might be a bug in spotify-web-api-node v5.0.2');
-      console.error('Let\'s try to use the playlist directly...\n');
+      console.error('\n✅ GOOD NEWS: /browse and /recommendations endpoints work!');
+      console.error('   You can use featured playlists or generate dynamic playlists.\n');
       return false;
     }
   }

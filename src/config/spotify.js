@@ -4,11 +4,25 @@
 const SpotifyWebApi = require('spotify-web-api-node');
 const logger = require('../utils/logger');
 
+// OAuth Configuration
+const SPOTIFY_SCOPES = [
+  'playlist-read-private',
+  'playlist-read-collaborative',
+  'user-read-private',
+  'user-read-email'
+];
+
+const REDIRECT_URI = process.env.SPOTIFY_REDIRECT_URI || 'http://localhost:3001/api/auth/callback';
+
 // Instance Spotify API
 const spotifyApi = new SpotifyWebApi({
   clientId: process.env.SPOTIFY_CLIENT_ID,
-  clientSecret: process.env.SPOTIFY_CLIENT_SECRET
+  clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
+  redirectUri: REDIRECT_URI
 });
+
+// User token storage (in-memory for now, will move to DB later)
+let userTokenData = null;
 
 /**
  * Authentifie l'application avec Spotify (Client Credentials)
@@ -78,8 +92,134 @@ async function checkSpotifyHealth() {
   }
 }
 
+/**
+ * Génère l'URL d'autorisation OAuth Spotify
+ * @returns {string} URL d'autorisation
+ */
+function getAuthorizationUrl() {
+  return spotifyApi.createAuthorizeURL(SPOTIFY_SCOPES, 'state-random-string');
+}
+
+/**
+ * Échange le code d'autorisation contre des tokens
+ * @param {string} code - Code d'autorisation Spotify
+ * @returns {Promise<Object>} Tokens (access_token, refresh_token)
+ */
+async function exchangeCodeForTokens(code) {
+  try {
+    const data = await spotifyApi.authorizationCodeGrant(code);
+
+    userTokenData = {
+      access_token: data.body['access_token'],
+      refresh_token: data.body['refresh_token'],
+      expires_in: data.body['expires_in'],
+      expires_at: Date.now() + (data.body['expires_in'] * 1000)
+    };
+
+    console.log('✅ User token obtained successfully');
+    console.log('   Access token (first 20 chars):', userTokenData.access_token.substring(0, 20) + '...');
+    console.log('   Refresh token (first 20 chars):', userTokenData.refresh_token.substring(0, 20) + '...');
+    console.log('   Expires in:', data.body['expires_in'] + 's');
+
+    // Schedule automatic refresh
+    scheduleTokenRefresh();
+
+    return userTokenData;
+  } catch (error) {
+    console.error('❌ Failed to exchange code for tokens');
+    console.error('Error:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Renouvelle le user token avec le refresh token
+ * @returns {Promise<Object>} Nouveau access token
+ */
+async function refreshUserToken() {
+  if (!userTokenData || !userTokenData.refresh_token) {
+    throw new Error('No refresh token available');
+  }
+
+  try {
+    console.log('🔄 Refreshing user token...');
+    spotifyApi.setRefreshToken(userTokenData.refresh_token);
+    const data = await spotifyApi.refreshAccessToken();
+
+    userTokenData.access_token = data.body['access_token'];
+    userTokenData.expires_in = data.body['expires_in'];
+    userTokenData.expires_at = Date.now() + (data.body['expires_in'] * 1000);
+
+    console.log('✅ User token refreshed successfully');
+
+    // Schedule next refresh
+    scheduleTokenRefresh();
+
+    return userTokenData;
+  } catch (error) {
+    console.error('❌ Failed to refresh user token');
+    console.error('Error:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Planifie le renouvellement automatique du token
+ */
+function scheduleTokenRefresh() {
+  if (!userTokenData) return;
+
+  const timeUntilExpiry = userTokenData.expires_at - Date.now();
+  const refreshTime = timeUntilExpiry * 0.9; // Refresh at 90% of lifetime
+
+  setTimeout(async () => {
+    try {
+      await refreshUserToken();
+    } catch (error) {
+      console.error('Auto-refresh failed:', error);
+    }
+  }, refreshTime);
+
+  console.log(`⏰ Next token refresh scheduled in ${Math.floor(refreshTime / 1000)}s`);
+}
+
+/**
+ * Obtient le token utilisateur actuel (ou null si pas authentifié)
+ * @returns {Object|null} User token data
+ */
+function getUserToken() {
+  return userTokenData;
+}
+
+/**
+ * Vérifie si un user token est disponible et valide
+ * @returns {boolean}
+ */
+function hasValidUserToken() {
+  return userTokenData && userTokenData.expires_at > Date.now();
+}
+
+/**
+ * Obtient le token Spotify à utiliser (user token si disponible, sinon app token)
+ * @returns {string} Access token
+ */
+function getActiveToken() {
+  if (hasValidUserToken()) {
+    return userTokenData.access_token;
+  }
+  return spotifyApi.getAccessToken(); // Fallback to app token
+}
+
 module.exports = {
   spotifyApi,
   authenticateSpotify,
-  checkSpotifyHealth
+  checkSpotifyHealth,
+  getAuthorizationUrl,
+  exchangeCodeForTokens,
+  refreshUserToken,
+  getUserToken,
+  hasValidUserToken,
+  getActiveToken,
+  SPOTIFY_SCOPES,
+  REDIRECT_URI
 };

@@ -6,6 +6,7 @@ const spotifyService = require('../services/spotifyService');
 const { checkSpotifyHealth } = require('../config/spotify');
 const validators = require('../utils/validators');
 const logger = require('../utils/logger');
+const authRoutes = require('../routes/authRoutes');
 
 /**
  * Configure les routes REST
@@ -14,6 +15,9 @@ const logger = require('../utils/logger');
  */
 function setupApiRoutes(games) {
   const router = express.Router();
+
+  // ==================== AUTHENTICATION ROUTES ====================
+  router.use('/auth', authRoutes);
 
   // ==================== HEALTH CHECK ====================
   router.get('/health', async (req, res) => {
