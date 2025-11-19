@@ -341,18 +341,35 @@ class SpotifyService {
       console.log('✅ Direct API call SUCCESS! Track:', trackResponse.data.name);
       console.log('   Artist:', trackResponse.data.artists[0].name);
 
-      // NEW TEST: Try browse endpoints (should work with Client Credentials)
+      // NEW TEST: Try browse endpoints with different markets
       console.log('\n🔧 Testing /browse/featured-playlists...');
-      const featuredResponse = await axios.get('https://api.spotify.com/v1/browse/featured-playlists', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
-        params: {
-          limit: 5
+      const marketsToTest = ['US', 'FR', 'GB'];
+      let browseSuccess = false;
+
+      for (const market of marketsToTest) {
+        try {
+          console.log(`  Trying market=${market}...`);
+          const featuredResponse = await axios.get('https://api.spotify.com/v1/browse/featured-playlists', {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            },
+            params: {
+              limit: 5,
+              market: market
+            }
+          });
+          console.log(`✅ Browse endpoint SUCCESS with market=${market}!`);
+          console.log('   Featured playlists:', featuredResponse.data.playlists.items.map(p => p.name).join(', '));
+          browseSuccess = true;
+          break;
+        } catch (marketErr) {
+          console.log(`  ❌ market=${market} failed:`, marketErr.response?.status);
         }
-      });
-      console.log('✅ Browse endpoint SUCCESS!');
-      console.log('   Featured playlists:', featuredResponse.data.playlists.items.map(p => p.name).join(', '));
+      }
+
+      if (!browseSuccess) {
+        console.log('❌ All markets failed for /browse/featured-playlists');
+      }
 
       // NEW TEST: Try recommendations (should work with Client Credentials)
       console.log('\n🔧 Testing /recommendations...');

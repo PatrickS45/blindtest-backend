@@ -17,13 +17,32 @@ router.get('/featured', async (req, res) => {
 
     console.log('Fetching featured playlists, using user token:', isUserToken);
 
-    const response = await axios.get('https://api.spotify.com/v1/browse/featured-playlists', {
-      headers: { 'Authorization': `Bearer ${token}` },
-      params: {
-        limit: 20,
-        country: 'FR'
+    // Try multiple markets in order of preference
+    const markets = ['US', 'FR', 'GB'];
+    let response = null;
+    let lastError = null;
+
+    for (const market of markets) {
+      try {
+        console.log(`  Trying market=${market}...`);
+        response = await axios.get('https://api.spotify.com/v1/browse/featured-playlists', {
+          headers: { 'Authorization': `Bearer ${token}` },
+          params: {
+            limit: 20,
+            market: market  // Use 'market' instead of 'country'
+          }
+        });
+        console.log(`✅ Success with market=${market}`);
+        break;
+      } catch (err) {
+        console.log(`  ❌ market=${market} failed:`, err.response?.status);
+        lastError = err;
       }
-    });
+    }
+
+    if (!response) {
+      throw lastError || new Error('All markets failed');
+    }
 
     const playlists = response.data.playlists.items.map(p => ({
       id: p.id,
@@ -57,14 +76,31 @@ router.get('/categories', async (req, res) => {
   try {
     const token = getActiveToken();
 
-    const response = await axios.get('https://api.spotify.com/v1/browse/categories', {
-      headers: { 'Authorization': `Bearer ${token}` },
-      params: {
-        limit: 20,
-        country: 'FR',
-        locale: 'fr_FR'
+    // Try multiple markets
+    const markets = ['US', 'FR', 'GB'];
+    let response = null;
+    let lastError = null;
+
+    for (const market of markets) {
+      try {
+        response = await axios.get('https://api.spotify.com/v1/browse/categories', {
+          headers: { 'Authorization': `Bearer ${token}` },
+          params: {
+            limit: 20,
+            market: market,
+            locale: 'fr_FR'
+          }
+        });
+        console.log(`✅ Categories success with market=${market}`);
+        break;
+      } catch (err) {
+        lastError = err;
       }
-    });
+    }
+
+    if (!response) {
+      throw lastError || new Error('All markets failed');
+    }
 
     const categories = response.data.categories.items.map(c => ({
       id: c.id,
@@ -95,13 +131,30 @@ router.get('/category/:id/playlists', async (req, res) => {
     const token = getActiveToken();
     const categoryId = req.params.id;
 
-    const response = await axios.get(`https://api.spotify.com/v1/browse/categories/${categoryId}/playlists`, {
-      headers: { 'Authorization': `Bearer ${token}` },
-      params: {
-        limit: 20,
-        country: 'FR'
+    // Try multiple markets
+    const markets = ['US', 'FR', 'GB'];
+    let response = null;
+    let lastError = null;
+
+    for (const market of markets) {
+      try {
+        response = await axios.get(`https://api.spotify.com/v1/browse/categories/${categoryId}/playlists`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+          params: {
+            limit: 20,
+            market: market
+          }
+        });
+        console.log(`✅ Category playlists success with market=${market}`);
+        break;
+      } catch (err) {
+        lastError = err;
       }
-    });
+    }
+
+    if (!response) {
+      throw lastError || new Error('All markets failed');
+    }
 
     const playlists = response.data.playlists.items.map(p => ({
       id: p.id,
