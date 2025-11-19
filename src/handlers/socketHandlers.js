@@ -320,7 +320,11 @@ function setupSocketHandlers(io) {
           playlist = r2MusicService.getPlaylist(playlistId);
         } else {
           console.log('🎵 Loading playlist from Spotify');
-          playlist = await spotifyService.getPlaylist(playlistId);
+          try {
+            playlist = await spotifyService.getPlaylist(playlistId);
+          } catch (spotifyError) {
+            throw new Error('Spotify is not configured. Please use R2 playlists (32-character hex IDs) or configure Spotify credentials.');
+          }
         }
 
         // Sauvegarder dans la partie

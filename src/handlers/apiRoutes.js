@@ -36,21 +36,23 @@ function setupApiRoutes(games) {
     const spotifyHealthy = await checkSpotifyHealth();
 
     const health = {
-      status: spotifyHealthy ? 'ok' : 'degraded',
+      status: 'ok', // Service is ok even without Spotify (R2 is available)
       uptime: process.uptime(),
       timestamp: Date.now(),
-      spotify: spotifyHealthy ? 'connected' : 'disconnected',
+      services: {
+        spotify: spotifyHealthy ? 'connected' : 'disabled',
+        r2: 'enabled', // R2 is always enabled
+      },
       games: {
         active: games.size,
         totalPlayers: Array.from(games.values()).reduce((sum, g) => sum + g.players.size, 0)
       }
     };
 
-    const statusCode = spotifyHealthy ? 200 : 503;
-    res.status(statusCode).json(health);
+    res.status(200).json(health);
 
     if (!spotifyHealthy) {
-      logger.warn('Health check degraded - Spotify disconnected');
+      logger.info('Health check: Spotify disabled, using R2 for playlists');
     }
   });
 
@@ -78,6 +80,15 @@ function setupApiRoutes(games) {
 
     } catch (error) {
       logger.error('Playlist API error', { error: error.message });
+
+      // Message spécifique si Spotify n'est pas configuré
+      if (error.message && error.message.includes('Spotify')) {
+        return res.status(503).json({
+          error: 'Spotify API is not configured. Please use R2 playlists instead.',
+          hint: 'Visit /playlist-manager.html to create R2 playlists'
+        });
+      }
+
       res.status(500).json({
         error: error.message
       });
@@ -172,9 +183,19 @@ function setupApiRoutes(games) {
           total: totalPlayers,
           average: totalGames > 0 ? (totalPlayers / totalGames).toFixed(2) : 0
         },
-        spotify: {
-          cacheStats: spotifyService.getCacheStats()
-        },
+        spotify: (() => {
+          try {
+            return {
+              enabled: true,
+              cacheStats: spotifyService.getCacheStats()
+            };
+          } catch {
+            return {
+              enabled: false,
+              message: 'Spotify not configured'
+            };
+          }
+        })(),
         timestamp: Date.now()
       };
 
