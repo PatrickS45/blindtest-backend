@@ -9,6 +9,7 @@ const logger = require('../utils/logger');
 const authRoutes = require('../routes/authRoutes');
 const testRoutes = require('../routes/testRoutes');
 const browseRoutes = require('../routes/browseRoutes');
+const musicRoutes = require('../routes/musicRoutes');
 
 /**
  * Configure les routes REST
@@ -26,6 +27,9 @@ function setupApiRoutes(games) {
 
   // ==================== BROWSE ROUTES (SPOTIFY DISCOVERY) ====================
   router.use('/browse', browseRoutes);
+
+  // ==================== MUSIC ROUTES (R2 CUSTOM MUSIC) ====================
+  router.use('/music', musicRoutes);
 
   // ==================== HEALTH CHECK ====================
   router.get('/health', async (req, res) => {
