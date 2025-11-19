@@ -30,6 +30,9 @@ app.set('trust proxy', true);
 
 // ==================== MIDDLEWARE ====================
 
+// Static files
+app.use(express.static('public'));
+
 // Body parser
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

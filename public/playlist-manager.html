@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestionnaire de Playlists - BlindTest</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        h1 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .section {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .section h2 {
+            color: #333;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+
+        .folders-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .folder-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .folder-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        }
+
+        .folder-name {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .folder-action {
+            background: rgba(255,255,255,0.2);
+            border: 1px solid white;
+            color: white;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 10px;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+
+        .folder-action:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .playlists-list {
+            margin-top: 20px;
+        }
+
+        .playlist-item {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.2s;
+        }
+
+        .playlist-item:hover {
+            background: #e9ecef;
+        }
+
+        .playlist-info {
+            flex: 1;
+        }
+
+        .playlist-name {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .playlist-meta {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .playlist-id {
+            font-family: monospace;
+            background: #e9ecef;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            color: #495057;
+            margin-top: 8px;
+            display: inline-block;
+            cursor: pointer;
+        }
+
+        .playlist-id:hover {
+            background: #dee2e6;
+        }
+
+        .playlist-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            z-index: 1000;
+            min-width: 300px;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .notification.success {
+            border-left: 4px solid #28a745;
+        }
+
+        .notification.error {
+            border-left: 4px solid #dc3545;
+        }
+
+        .notification-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .api-base {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            font-family: monospace;
+            font-size: 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 36px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎵 Gestionnaire de Playlists</h1>
+            <p class="subtitle">Gérez vos compilations musicales pour BlindTest</p>
+            <div class="api-base">
+                <span id="apiUrl">Chargement...</span>
+                <button class="btn btn-primary" onclick="copyApiUrl()">Copier</button>
+            </div>
+        </header>
+
+        <!-- Statistiques -->
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-number" id="statFolders">-</div>
+                <div class="stat-label">Dossiers R2</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="statPlaylists">-</div>
+                <div class="stat-label">Playlists créées</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="statTracks">-</div>
+                <div class="stat-label">Total de tracks</div>
+            </div>
+        </div>
+
+        <!-- Dossiers R2 -->
+        <div class="section">
+            <h2>📁 Dossiers thématiques sur Cloudflare R2</h2>
+            <div id="foldersContainer">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Chargement des dossiers...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Playlists existantes -->
+        <div class="section">
+            <h2>🎼 Playlists créées</h2>
+            <div id="playlistsContainer">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Chargement des playlists...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration de l'API
+        const API_BASE = window.location.origin + '/api/music';
+        document.getElementById('apiUrl').textContent = API_BASE;
+
+        // Copier l'URL de l'API
+        function copyApiUrl() {
+            navigator.clipboard.writeText(API_BASE);
+            showNotification('URL copiée!', 'L\'URL de l\'API a été copiée dans le presse-papier.', 'success');
+        }
+
+        // Afficher une notification
+        function showNotification(title, message, type = 'success') {
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.innerHTML = `
+                <div class="notification-title">${title}</div>
+                <div>${message}</div>
+            `;
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.style.animation = 'slideIn 0.3s ease-out reverse';
+                setTimeout(() => notification.remove(), 300);
+            }, 3000);
+        }
+
+        // Copier l'ID de playlist
+        function copyPlaylistId(id) {
+            navigator.clipboard.writeText(id);
+            showNotification('ID copié!', `L'ID "${id}" a été copié. Utilise-le dans ton jeu!`, 'success');
+        }
+
+        // Charger les dossiers R2
+        async function loadFolders() {
+            try {
+                const response = await fetch(`${API_BASE}/folders`);
+                const data = await response.json();
+
+                const container = document.getElementById('foldersContainer');
+
+                if (data.success && data.folders.length > 0) {
+                    document.getElementById('statFolders').textContent = data.folders.length;
+
+                    container.innerHTML = `
+                        <div class="folders-grid">
+                            ${data.folders.map(folder => `
+                                <div class="folder-card">
+                                    <div class="folder-name">📂 ${folder.name}</div>
+                                    <button class="folder-action" onclick="createPlaylistFromFolder('${folder.name}')">
+                                        ➕ Créer une playlist
+                                    </button>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                } else {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📂</div>
+                            <p>Aucun dossier trouvé sur R2.</p>
+                            <p style="margin-top: 10px; font-size: 14px;">Uploadez vos MP3 dans des dossiers thématiques sur Cloudflare R2.</p>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Erreur lors du chargement des dossiers:', error);
+                document.getElementById('foldersContainer').innerHTML = `
+                    <div class="empty-state">
+                        <p>❌ Erreur lors du chargement des dossiers</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Charger les playlists
+        async function loadPlaylists() {
+            try {
+                const response = await fetch(`${API_BASE}/playlists`);
+                const data = await response.json();
+
+                const container = document.getElementById('playlistsContainer');
+
+                if (data.success && data.playlists.length > 0) {
+                    document.getElementById('statPlaylists').textContent = data.playlists.length;
+
+                    const totalTracks = data.playlists.reduce((sum, p) => sum + p.totalTracks, 0);
+                    document.getElementById('statTracks').textContent = totalTracks;
+
+                    container.innerHTML = `
+                        <div class="playlists-list">
+                            ${data.playlists.map(playlist => `
+                                <div class="playlist-item">
+                                    <div class="playlist-info">
+                                        <div class="playlist-name">🎵 ${playlist.name}</div>
+                                        <div class="playlist-meta">
+                                            ${playlist.totalTracks} tracks
+                                            ${playlist.description ? `• ${playlist.description}` : ''}
+                                            • Créée le ${new Date(playlist.createdAt).toLocaleDateString('fr-FR')}
+                                        </div>
+                                        <div class="playlist-id" onclick="copyPlaylistId('${playlist.id}')" title="Cliquer pour copier">
+                                            ID: ${playlist.id}
+                                        </div>
+                                    </div>
+                                    <div class="playlist-actions">
+                                        <button class="btn btn-success" onclick="viewPlaylist('${playlist.id}')">
+                                            👁️ Voir
+                                        </button>
+                                        <button class="btn btn-danger" onclick="deletePlaylist('${playlist.id}', '${playlist.name}')">
+                                            🗑️ Supprimer
+                                        </button>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                } else {
+                    document.getElementById('statPlaylists').textContent = '0';
+                    document.getElementById('statTracks').textContent = '0';
+
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">🎼</div>
+                            <p>Aucune playlist créée.</p>
+                            <p style="margin-top: 10px; font-size: 14px;">Créez une playlist à partir d'un dossier ci-dessus.</p>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Erreur lors du chargement des playlists:', error);
+                document.getElementById('playlistsContainer').innerHTML = `
+                    <div class="empty-state">
+                        <p>❌ Erreur lors du chargement des playlists</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Créer une playlist depuis un dossier
+        async function createPlaylistFromFolder(folderName) {
+            const playlistName = prompt(`Nom de la playlist pour "${folderName}":`, folderName);
+
+            if (!playlistName) return;
+
+            try {
+                const url = `${API_BASE}/generate-playlist?folder=${encodeURIComponent(folderName)}&name=${encodeURIComponent(playlistName)}`;
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (data.success) {
+                    showNotification(
+                        '✅ Playlist créée!',
+                        `"${data.playlist.name}" avec ${data.playlist.totalTracks} tracks. ID: ${data.playlist.id}`,
+                        'success'
+                    );
+                    loadPlaylists(); // Recharger la liste
+                } else {
+                    showNotification('❌ Erreur', data.error, 'error');
+                }
+            } catch (error) {
+                console.error('Erreur:', error);
+                showNotification('❌ Erreur', 'Impossible de créer la playlist', 'error');
+            }
+        }
+
+        // Voir les détails d'une playlist
+        async function viewPlaylist(id) {
+            try {
+                const response = await fetch(`${API_BASE}/playlist/${id}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    const tracks = data.playlist.tracks.map((t, i) =>
+                        `${i + 1}. ${t.name} - ${t.artists[0].name}`
+                    ).join('\n');
+
+                    alert(`Playlist: ${data.playlist.name}\n\n${tracks}`);
+                } else {
+                    showNotification('❌ Erreur', 'Playlist introuvable', 'error');
+                }
+            } catch (error) {
+                console.error('Erreur:', error);
+                showNotification('❌ Erreur', 'Impossible de charger la playlist', 'error');
+            }
+        }
+
+        // Supprimer une playlist
+        async function deletePlaylist(id, name) {
+            if (!confirm(`Supprimer la playlist "${name}" ?\n\nID: ${id}`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/playlist/${id}`, {
+                    method: 'DELETE'
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    showNotification('✅ Supprimée!', `La playlist "${name}" a été supprimée.`, 'success');
+                    loadPlaylists(); // Recharger la liste
+                } else {
+                    showNotification('❌ Erreur', data.error, 'error');
+                }
+            } catch (error) {
+                console.error('Erreur:', error);
+                showNotification('❌ Erreur', 'Impossible de supprimer la playlist', 'error');
+            }
+        }
+
+        // Charger les données au démarrage
+        document.addEventListener('DOMContentLoaded', () => {
+            loadFolders();
+            loadPlaylists();
+        });
+
+        // Rafraîchir toutes les 30 secondes
+        setInterval(() => {
+            loadFolders();
+            loadPlaylists();
+        }, 30000);
+    </script>
+</body>
+</html>
