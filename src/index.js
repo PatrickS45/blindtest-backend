@@ -48,7 +48,9 @@ const apiLimiter = rateLimit({
     error: 'Trop de requêtes, réessayez dans 1 minute'
   },
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  // Fix for Render.com proxy
+  validate: { trustProxy: false }
 });
 
 app.use('/api/', apiLimiter);
