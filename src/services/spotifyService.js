@@ -62,17 +62,53 @@ class SpotifyService {
       const axios = require('axios');
       const token = spotifyApi.getAccessToken();
 
-      const response = await axios.get(`https://api.spotify.com/v1/playlists/${playlistId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
+      // Try multiple approaches to get playlist data
+      let playlistData = null;
+
+      // Attempt 1: Try getting playlist metadata AND tracks together
+      try {
+        console.log('Attempt 1: Trying /playlists/{id} endpoint...');
+        const response = await axios.get(`https://api.spotify.com/v1/playlists/${playlistId}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        playlistData = response.data;
+        console.log('✅ Success with /playlists/{id}');
+      } catch (err) {
+        console.log('❌ Failed with /playlists/{id}, status:', err.response?.status);
+
+        // Attempt 2: Try getting just the tracks (may work with Client Credentials)
+        console.log('Attempt 2: Trying /playlists/{id}/tracks endpoint...');
+        try {
+          const tracksResponse = await axios.get(`https://api.spotify.com/v1/playlists/${playlistId}/tracks`, {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            },
+            params: {
+              limit: 100,
+              fields: 'items(track(id,name,artists,album,preview_url,duration_ms)),total'
+            }
+          });
+
+          // Build minimal playlist object with tracks
+          playlistData = {
+            id: playlistId,
+            name: `Playlist ${playlistId}`, // We don't have the name
+            description: '',
+            images: [],
+            tracks: tracksResponse.data
+          };
+          console.log('✅ Success with /playlists/{id}/tracks');
+        } catch (err2) {
+          console.log('❌ Failed with /playlists/{id}/tracks too, status:', err2.response?.status);
+          throw err; // Throw original error
         }
-      });
+      }
 
-      const playlistData = response.data;
-
-      console.log('✅ Playlist fetched successfully!');
+      console.log('✅ Playlist data obtained!');
       console.log('Playlist name:', playlistData.name);
-      console.log('Total tracks:', playlistData.tracks?.total || 0);
+      console.log('Total tracks:', playlistData.tracks?.total || playlistData.tracks?.items?.length || 0);
 
       if (!playlistData || !playlistData.tracks) {
         throw new Error(ERRORS.NO_PLAYLIST);
