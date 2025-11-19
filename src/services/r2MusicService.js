@@ -153,14 +153,49 @@ class R2MusicService {
   }
 
   /**
-   * Liste tous les tracks disponibles
-   * @returns {Promise<Array>} Liste des tracks
+   * Liste tous les dossiers (préfixes) dans le bucket
+   * @returns {Promise<Array>} Liste des dossiers
    */
-  async listTracks() {
+  async listFolders() {
     try {
       const command = new ListObjectsV2Command({
         Bucket: this.bucketName,
-        Prefix: 'tracks/',
+        Delimiter: '/',
+      });
+
+      const response = await this.s3Client.send(command);
+
+      if (!response.CommonPrefixes) {
+        return [];
+      }
+
+      const folders = response.CommonPrefixes.map(prefix => ({
+        name: prefix.Prefix.replace(/\/$/, ''), // Enlever le / final
+        path: prefix.Prefix,
+      }));
+
+      console.log(`📁 Found ${folders.length} folders in R2`);
+
+      return folders;
+    } catch (error) {
+      console.error('❌ Failed to list folders:', error.message);
+      throw new Error(`List folders failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Liste tous les tracks disponibles dans un dossier spécifique
+   * @param {string} folder - Nom du dossier (optionnel)
+   * @returns {Promise<Array>} Liste des tracks
+   */
+  async listTracks(folder = null) {
+    try {
+      // Si pas de dossier spécifié, lister TOUT le bucket
+      const prefix = folder ? `${folder}/` : '';
+
+      const command = new ListObjectsV2Command({
+        Bucket: this.bucketName,
+        Prefix: prefix,
       });
 
       const response = await this.s3Client.send(command);
@@ -169,15 +204,23 @@ class R2MusicService {
         return [];
       }
 
+      // Filtrer uniquement les fichiers audio (pas les dossiers)
+      const audioFiles = response.Contents.filter(item => {
+        const ext = path.extname(item.Key).toLowerCase();
+        return ['.mp3', '.wav', '.flac', '.m4a', '.ogg'].includes(ext);
+      });
+
       const tracks = await Promise.all(
-        response.Contents.map(async (item) => {
+        audioFiles.map(async (item) => {
+          const fileName = path.basename(item.Key);
           const trackId = path.basename(item.Key, path.extname(item.Key));
           const url = this.publicDomain
-            ? `https://${this.publicDomain}/${item.Key}`
+            ? `https://${this.publicDomain}/${encodeURIComponent(item.Key)}`
             : await this.getSignedUrl(item.Key);
 
           return {
             id: trackId,
+            fileName: fileName,
             s3Key: item.Key,
             url: url,
             size: item.Size,
@@ -185,6 +228,8 @@ class R2MusicService {
           };
         })
       );
+
+      console.log(`🎵 Found ${tracks.length} tracks${folder ? ` in folder "${folder}"` : ''}`);
 
       return tracks;
     } catch (error) {
@@ -289,6 +334,49 @@ class R2MusicService {
     }
 
     console.log('✅ Playlist deleted:', playlistId);
+  }
+
+  /**
+   * Crée une playlist automatiquement depuis un dossier R2
+   * @param {string} folderName - Nom du dossier
+   * @param {string} playlistName - Nom de la playlist (optionnel, utilise le nom du dossier si absent)
+   * @param {string} description - Description (optionnel)
+   * @returns {Promise<Object>} Playlist créée
+   */
+  async createPlaylistFromFolder(folderName, playlistName = null, description = null) {
+    try {
+      console.log(`📂 Creating playlist from folder: ${folderName}`);
+
+      // Lister tous les fichiers du dossier
+      const tracks = await this.listTracks(folderName);
+
+      if (tracks.length === 0) {
+        throw new Error(`No audio files found in folder "${folderName}"`);
+      }
+
+      // Transformer les tracks R2 en format playlist
+      const playlistTracks = tracks.map(track => ({
+        id: track.id,
+        title: track.fileName.replace(path.extname(track.fileName), ''), // Utiliser le nom de fichier comme titre
+        artist: 'Unknown Artist', // Pas de métadonnées pour les fichiers uploadés directement
+        album: folderName, // Utiliser le nom du dossier comme album
+        url: track.url,
+        duration: 0, // Durée inconnue pour l'instant
+      }));
+
+      // Créer la playlist
+      const name = playlistName || folderName;
+      const desc = description || `Playlist auto-générée depuis le dossier "${folderName}"`;
+
+      const playlist = this.createPlaylist(name, desc, playlistTracks);
+
+      console.log(`✅ Playlist created from folder "${folderName}": ${playlist.id} (${tracks.length} tracks)`);
+
+      return playlist;
+    } catch (error) {
+      console.error(`❌ Failed to create playlist from folder "${folderName}":`, error.message);
+      throw error;
+    }
   }
 
   /**
