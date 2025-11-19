@@ -269,6 +269,48 @@ router.post('/playlist/from-folder', async (req, res) => {
 });
 
 /**
+ * GET /music/generate-playlist?folder=xxx&name=xxx&desc=xxx
+ * Crée une playlist depuis un dossier (version GET pour faciliter les tests)
+ */
+router.get('/generate-playlist', async (req, res) => {
+  try {
+    const { folder, name, desc } = req.query;
+
+    if (!folder) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required parameter: folder',
+        example: '/api/music/generate-playlist?folder=Blind Test Disney&name=Disney Magic',
+      });
+    }
+
+    const playlist = await r2MusicService.createPlaylistFromFolder(
+      folder,
+      name,
+      desc
+    );
+
+    res.json({
+      success: true,
+      playlist: {
+        id: playlist.id,
+        name: playlist.name,
+        description: playlist.description,
+        totalTracks: playlist.totalTracks,
+      },
+      message: `✅ Playlist "${playlist.name}" créée avec ${playlist.totalTracks} tracks!`,
+      usage: `Utilise cet ID dans ton jeu: ${playlist.id}`,
+    });
+  } catch (error) {
+    console.error('Generate playlist error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/**
  * GET /music/playlists
  * Liste toutes les playlists
  */
