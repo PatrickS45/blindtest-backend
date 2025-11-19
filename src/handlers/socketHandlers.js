@@ -115,10 +115,12 @@ function setupSocketHandlers(io) {
     // ==================== REJOINDRE UNE PARTIE ====================
     socket.on('join_game', (data, callback) => {
       try {
+        console.log('🎮 JOIN_GAME event received:', JSON.stringify(data));
         const { roomCode, playerName } = data;
 
         // Validation
         if (!validators.validateRoomCode(roomCode)) {
+          console.log('❌ Invalid room code:', roomCode);
           const response = { success: false, error: ERRORS.INVALID_ROOM_CODE };
           if (typeof callback === 'function') {
             return callback(response);
@@ -128,6 +130,8 @@ function setupSocketHandlers(io) {
 
         const game = games.get(roomCode);
         if (!game) {
+          console.log('❌ Game not found:', roomCode);
+          console.log('Available games:', Array.from(games.keys()));
           const response = { success: false, error: ERRORS.GAME_NOT_FOUND };
           if (typeof callback === 'function') {
             return callback(response);
@@ -197,8 +201,11 @@ function setupSocketHandlers(io) {
         }
 
         // Nouveau joueur
+        console.log('✅ Adding new player:', sanitizedName, 'to game:', roomCode);
         const player = game.addPlayer(socket.id, sanitizedName);
         socket.join(roomCode);
+
+        logger.info('Player added', { roomCode, playerName: sanitizedName, playerId: player.id });
 
         // Notifier tous les clients
         io.to(roomCode).emit('player_joined', {
@@ -213,6 +220,8 @@ function setupSocketHandlers(io) {
           mode: game.mode,
           config: game.config
         };
+
+        console.log('✅ Player join successful, response:', JSON.stringify(response));
 
         if (typeof callback === 'function') {
           callback(response);
