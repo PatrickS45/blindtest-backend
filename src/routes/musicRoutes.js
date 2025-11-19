@@ -133,16 +133,40 @@ router.post('/upload-multiple', upload.array('files', 100), async (req, res) => 
 });
 
 /**
- * GET /music/tracks
- * Liste tous les tracks uploadés
+ * GET /music/folders
+ * Liste tous les dossiers thématiques
+ */
+router.get('/folders', async (req, res) => {
+  try {
+    const folders = await r2MusicService.listFolders();
+
+    res.json({
+      success: true,
+      count: folders.length,
+      folders: folders,
+    });
+  } catch (error) {
+    console.error('List folders error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * GET /music/tracks?folder=xxx
+ * Liste tous les tracks uploadés (optionnellement filtrés par dossier)
  */
 router.get('/tracks', async (req, res) => {
   try {
-    const tracks = await r2MusicService.listTracks();
+    const { folder } = req.query;
+    const tracks = await r2MusicService.listTracks(folder);
 
     res.json({
       success: true,
       count: tracks.length,
+      folder: folder || 'all',
       tracks: tracks,
     });
   } catch (error) {
@@ -201,6 +225,42 @@ router.post('/playlist', async (req, res) => {
     });
   } catch (error) {
     console.error('Create playlist error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * POST /music/playlist/from-folder
+ * Crée une playlist automatiquement depuis un dossier R2
+ * Body: { folderName, playlistName (optionnel), description (optionnel) }
+ */
+router.post('/playlist/from-folder', async (req, res) => {
+  try {
+    const { folderName, playlistName, description } = req.body;
+
+    if (!folderName) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid request: folderName required',
+      });
+    }
+
+    const playlist = await r2MusicService.createPlaylistFromFolder(
+      folderName,
+      playlistName,
+      description
+    );
+
+    res.json({
+      success: true,
+      playlist: playlist,
+      message: `Playlist created with ${playlist.totalTracks} tracks from folder "${folderName}"`,
+    });
+  } catch (error) {
+    console.error('Create playlist from folder error:', error);
     res.status(500).json({
       success: false,
       error: error.message,
