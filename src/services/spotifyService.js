@@ -132,7 +132,8 @@ class SpotifyService {
 
       console.log('✅ Playlist data obtained!');
       console.log('Playlist name:', playlistData.name);
-      console.log('Total tracks:', playlistData.tracks?.total || playlistData.tracks?.items?.length || 0);
+      const totalTracks = playlistData.tracks?.total || playlistData.tracks?.items?.length || 0;
+      console.log('Total tracks:', totalTracks);
 
       if (!playlistData || !playlistData.tracks) {
         throw new Error(ERRORS.NO_PLAYLIST);
@@ -143,9 +144,12 @@ class SpotifyService {
         .filter(item => item.track && item.track.preview_url) // ⚠️ FILTRE CRITIQUE
         .map(item => this.transformTrack(item.track));
 
+      console.log(`📊 Tracks with preview: ${allTracks.length}/${totalTracks}`);
+      console.log(`   Required minimum: ${LIMITS.MIN_TRACKS_WITH_PREVIEW}`);
+
       // Vérifier qu'il y a assez de tracks
       if (allTracks.length < LIMITS.MIN_TRACKS_WITH_PREVIEW) {
-        throw new Error(ERRORS.INSUFFICIENT_TRACKS);
+        throw new Error(`Playlist insuffisante : seulement ${allTracks.length} pistes sur ${totalTracks} ont des extraits audio disponibles (minimum ${LIMITS.MIN_TRACKS_WITH_PREVIEW} requis). Essayez une autre playlist avec des chansons plus populaires.`);
       }
 
       const playlist = {
