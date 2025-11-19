@@ -313,6 +313,33 @@ class SpotifyService {
       console.log('✅ Direct API call SUCCESS! Track:', trackResponse.data.name);
       console.log('   Artist:', trackResponse.data.artists[0].name);
 
+      // NEW TEST: Try browse endpoints (should work with Client Credentials)
+      console.log('\n🔧 Testing /browse/featured-playlists...');
+      const featuredResponse = await axios.get('https://api.spotify.com/v1/browse/featured-playlists', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        params: {
+          limit: 5
+        }
+      });
+      console.log('✅ Browse endpoint SUCCESS!');
+      console.log('   Featured playlists:', featuredResponse.data.playlists.items.map(p => p.name).join(', '));
+
+      // NEW TEST: Try recommendations (should work with Client Credentials)
+      console.log('\n🔧 Testing /recommendations...');
+      const recoResponse = await axios.get('https://api.spotify.com/v1/recommendations', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        params: {
+          seed_genres: 'pop,rock',
+          limit: 10
+        }
+      });
+      console.log('✅ Recommendations endpoint SUCCESS!');
+      console.log('   Generated', recoResponse.data.tracks.length, 'tracks');
+
     } catch (error) {
       console.error('❌ Direct API call FAILED!');
       console.error('Status:', error.response?.status);
@@ -350,7 +377,8 @@ class SpotifyService {
       console.error('Headers:', JSON.stringify(error.headers, null, 2));
       console.error('\n⚠️ The direct API call worked, but the library calls fail.');
       console.error('This might be a bug in spotify-web-api-node v5.0.2');
-      console.error('Let\'s try to use the playlist directly...\n');
+      console.error('\n✅ GOOD NEWS: /browse and /recommendations endpoints work!');
+      console.error('   You can use featured playlists or generate dynamic playlists.\n');
       return false;
     }
   }
