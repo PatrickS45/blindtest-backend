@@ -608,7 +608,7 @@ function setupSocketHandlers(io) {
               io.to(roomCode).emit('game_ended', { reason: 'Host disconnected' });
               logger.info('Game deleted (host reconnection timeout)', { roomCode });
             }
-          }, 60000); // 60 secondes de grâce pour reconnexion
+          }, 300000); // 5 minutes de grâce pour reconnexion (pour permettre le flow OAuth)
         }
       });
     });
