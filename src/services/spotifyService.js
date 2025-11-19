@@ -55,9 +55,19 @@ class SpotifyService {
     try {
       await this.waitIfNeeded();
 
-      // Add market parameter to ensure playlist is accessible
-      const response = await spotifyApi.getPlaylist(playlistId, { market: 'FR' });
+      // 🔍 DEBUG: Log request details
+      console.log('🔍 DEBUG: Attempting to fetch playlist');
+      console.log('Playlist ID:', playlistId);
+      console.log('Has access token:', !!spotifyApi.getAccessToken());
+      console.log('Access token (first 20 chars):', spotifyApi.getAccessToken()?.substring(0, 20) + '...');
+
+      // Try WITHOUT market parameter first to isolate the issue
+      console.log('Calling spotifyApi.getPlaylist...');
+      const response = await spotifyApi.getPlaylist(playlistId);
       const playlistData = response.body;
+
+      console.log('✅ Playlist fetched successfully!');
+      console.log('Playlist name:', playlistData.name);
 
       if (!playlistData || !playlistData.tracks) {
         throw new Error(ERRORS.NO_PLAYLIST);
@@ -229,6 +239,41 @@ class SpotifyService {
     } catch (error) {
       logger.error('Failed to search artists', { query, error: error.message });
       return [];
+    }
+  }
+
+  /**
+   * Test des credentials Spotify avec différents endpoints
+   */
+  async testCredentials() {
+    console.log('\n🧪 TESTING SPOTIFY CREDENTIALS...\n');
+
+    try {
+      // Test 1: Get available genre seeds (devrait toujours fonctionner)
+      console.log('Test 1: Getting genre seeds...');
+      const genres = await spotifyApi.getAvailableGenreSeeds();
+      console.log('✅ Genre seeds OK:', genres.body.genres.slice(0, 5));
+
+      // Test 2: Search for an artist (devrait fonctionner avec Client Credentials)
+      console.log('\nTest 2: Searching for artist "Taylor Swift"...');
+      const artistSearch = await spotifyApi.searchArtists('Taylor Swift', { limit: 1 });
+      if (artistSearch.body.artists.items.length > 0) {
+        console.log('✅ Artist search OK:', artistSearch.body.artists.items[0].name);
+      }
+
+      // Test 3: Try to get a well-known public playlist
+      console.log('\nTest 3: Getting Today\'s Top Hits playlist (37i9dQZF1DXcBWIGoYBM5M)...');
+      const playlist = await spotifyApi.getPlaylist('37i9dQZF1DXcBWIGoYBM5M');
+      console.log('✅ Playlist OK:', playlist.body.name);
+
+      console.log('\n✅ ALL TESTS PASSED!\n');
+      return true;
+    } catch (error) {
+      console.error('\n❌ TEST FAILED:');
+      console.error('Message:', error.message);
+      console.error('Status:', error.statusCode);
+      console.error('Body:', error.body);
+      return false;
     }
   }
 
