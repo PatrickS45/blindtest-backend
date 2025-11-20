@@ -523,19 +523,44 @@ function setupSocketHandlers(io) {
     // ==================== VALIDATION RÉPONSE (HOST) ====================
     socket.on('validate_answer', (data) => {
       try {
+        console.log('✅ VALIDATE_ANSWER event received:', JSON.stringify(data), 'socketId:', socket.id);
         const { roomCode, playerId, isCorrect } = data;
 
         const game = games.get(roomCode);
-        if (!game || game.hostId !== socket.id) return;
+        if (!game || game.hostId !== socket.id) {
+          console.log('❌ Unauthorized validate_answer');
+          return;
+        }
+
+        // Si playerId n'est pas fourni, utiliser le premier joueur qui a buzzé
+        let targetPlayerId = playerId;
+        if (!targetPlayerId && game.currentRound) {
+          const firstBuzzer = game.currentRound.getFirstBuzzer();
+          if (firstBuzzer) {
+            targetPlayerId = firstBuzzer.playerId;
+            console.log('🔍 Auto-detected buzzed player:', firstBuzzer.playerName, 'id:', targetPlayerId);
+          }
+        }
+
+        if (!targetPlayerId) {
+          console.log('❌ No player to validate - no playerId and no buzzer found');
+          return;
+        }
+
+        console.log('✅ Validating answer for player:', targetPlayerId, 'isCorrect:', isCorrect);
 
         // Valider via le moteur
-        const result = gameEngine.validateAnswer(game, playerId, isCorrect);
+        const result = gameEngine.validateAnswer(game, targetPlayerId, isCorrect);
+
+        console.log('📊 Validation result:', JSON.stringify(result));
 
         // Notifier tous les clients
         io.to(roomCode).emit('round_result', result);
 
       } catch (error) {
-        logger.error('Validation error', { error: error.message });
+        console.error('❌ ERROR in validate_answer:', error.message);
+        console.error('Stack:', error.stack);
+        logger.error('Validation error', { error: error.message, stack: error.stack });
       }
     });
 
