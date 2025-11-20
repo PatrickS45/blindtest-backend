@@ -244,10 +244,12 @@ function setupSocketHandlers(io) {
     // ==================== REJOINDRE COMME HÔTE (RECONNEXION) ====================
     socket.on('join_as_host', (data) => {
       try {
+        console.log('🎬 JOIN_AS_HOST event received:', JSON.stringify(data), 'socketId:', socket.id);
         const { roomCode } = data;
 
         const game = games.get(roomCode);
         if (!game) {
+          console.log('❌ Game not found for host join:', roomCode);
           logger.warn('Host tried to join non-existent game', { roomCode, socketId: socket.id });
           socket.emit('error', { message: 'Partie introuvable' });
           return;
@@ -258,6 +260,7 @@ function setupSocketHandlers(io) {
         game.hostId = socket.id;
         socket.join(roomCode);
 
+        console.log('✅ Host joined room:', roomCode, 'oldHostId:', oldHostId, 'newHostId:', socket.id);
         logger.info('Host reconnected', {
           roomCode,
           oldSocketId: oldHostId,
@@ -368,16 +371,29 @@ function setupSocketHandlers(io) {
     // ==================== DÉMARRER UN ROUND ====================
     socket.on('start_round', async (data, callback) => {
       try {
+        console.log('🎮 START_ROUND event received:', JSON.stringify(data), 'socketId:', socket.id);
         const { roomCode } = data;
 
         const game = games.get(roomCode);
-        if (!game || game.hostId !== socket.id) {
+        if (!game) {
+          console.log('❌ Game not found for start_round:', roomCode);
+          const response = { success: false, error: 'Game not found' };
+          if (typeof callback === 'function') {
+            return callback(response);
+          }
+          return socket.emit('round_started', response);
+        }
+
+        if (game.hostId !== socket.id) {
+          console.log('❌ Unauthorized start_round - socket:', socket.id, 'hostId:', game.hostId);
           const response = { success: false, error: ERRORS.UNAUTHORIZED };
           if (typeof callback === 'function') {
             return callback(response);
           }
           return socket.emit('round_started', response);
         }
+
+        console.log('✅ Starting round for game:', roomCode);
 
         if (!game.playlist) {
           const response = { success: false, error: ERRORS.NO_PLAYLIST };
