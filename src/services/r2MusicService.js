@@ -214,9 +214,15 @@ class R2MusicService {
         audioFiles.map(async (item) => {
           const fileName = path.basename(item.Key);
           const trackId = path.basename(item.Key, path.extname(item.Key));
-          const url = this.publicDomain
-            ? `https://${this.publicDomain}/${encodeURIComponent(item.Key)}`
-            : await this.getSignedUrl(item.Key);
+
+          // Encoder l'URL correctement: encoder chaque partie du chemin, pas les slashes
+          let url;
+          if (this.publicDomain) {
+            const encodedPath = item.Key.split('/').map(part => encodeURIComponent(part)).join('/');
+            url = `https://${this.publicDomain}/${encodedPath}`;
+          } else {
+            url = await this.getSignedUrl(item.Key);
+          }
 
           return {
             id: trackId,
