@@ -399,6 +399,14 @@ function setupSocketHandlers(io) {
           ...roundData
         });
 
+        // IMPORTANT: Envoyer aussi play_track pour la compatibilité frontend
+        io.to(roomCode).emit('play_track', {
+          previewUrl: round.track.preview_url,
+          duration: round.config.extractDuration,
+          title: round.track.name,
+          artist: round.track.artists?.[0]?.name || 'Unknown'
+        });
+
         if (typeof callback === 'function') {
           callback({ success: true });
         }
