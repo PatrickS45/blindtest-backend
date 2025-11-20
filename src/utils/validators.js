@@ -24,14 +24,27 @@ function validatePlaylistId(id) {
 }
 
 /**
- * Extrait l'ID de playlist depuis une URL Spotify
- * @param {string} input - URL ou ID de playlist
+ * Valide un ID de playlist R2 (32 caractères hexadécimaux MD5)
+ * @param {string} id
+ * @returns {boolean}
+ */
+function validateR2PlaylistId(id) {
+  if (!id || typeof id !== 'string') return false;
+  return /^[a-f0-9]{32}$/.test(id);
+}
+
+/**
+ * Extrait l'ID de playlist depuis une URL Spotify ou un ID R2
+ * @param {string} input - URL Spotify, ID Spotify, ou ID R2
  * @returns {string|null}
  */
 function extractPlaylistId(input) {
   if (!input) return null;
 
-  // Si c'est déjà un ID valide
+  // Si c'est un ID R2 valide (32 caractères hex)
+  if (validateR2PlaylistId(input)) return input;
+
+  // Si c'est un ID Spotify valide (22 caractères)
   if (validatePlaylistId(input)) return input;
 
   // Extraire depuis URL Spotify
@@ -103,6 +116,7 @@ function validateGameConfig(config = {}) {
 module.exports = {
   validateRoomCode,
   validatePlaylistId,
+  validateR2PlaylistId,
   extractPlaylistId,
   sanitizePlayerName,
   validateGameMode,
