@@ -293,7 +293,10 @@ function setupSocketHandlers(io) {
         const { roomCode, playlistId: rawPlaylistId } = data;
 
         const game = games.get(roomCode);
+        console.log('🎮 Game found:', !!game, 'Host check:', game ? (game.hostId === socket.id) : 'N/A');
+
         if (!game || game.hostId !== socket.id) {
+          console.log('❌ Unauthorized load_playlist - game:', !!game, 'socketId:', socket.id, 'hostId:', game?.hostId);
           const response = { success: false, error: ERRORS.UNAUTHORIZED };
           if (typeof callback === 'function') {
             return callback(response);
@@ -301,9 +304,13 @@ function setupSocketHandlers(io) {
           return socket.emit('playlist_loaded', response);
         }
 
+        console.log('📋 Extracting playlist ID from:', rawPlaylistId?.substring(0, 50));
         // Extraire l'ID de playlist
         const playlistId = validators.extractPlaylistId(rawPlaylistId);
+        console.log('🔑 Extracted playlist ID:', playlistId);
+
         if (!playlistId) {
+          console.log('❌ Invalid playlist ID after extraction');
           const response = { success: false, error: ERRORS.INVALID_PLAYLIST_ID };
           if (typeof callback === 'function') {
             return callback(response);
@@ -314,8 +321,9 @@ function setupSocketHandlers(io) {
         logger.info('Loading playlist from R2', { roomCode, playlistId });
 
         // Charger la playlist depuis R2
-        console.log('🎵 Loading playlist from Cloudflare R2');
+        console.log('🎵 Loading playlist from Cloudflare R2:', playlistId);
         const playlist = r2MusicService.getPlaylist(playlistId);
+        console.log('✅ Playlist retrieved:', playlist ? playlist.name : 'NULL');
 
         // Sauvegarder dans la partie
         game.setPlaylist(playlist);
