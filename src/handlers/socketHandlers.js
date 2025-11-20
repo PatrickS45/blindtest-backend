@@ -289,6 +289,7 @@ function setupSocketHandlers(io) {
     // ==================== CHARGER PLAYLIST ====================
     socket.on('load_playlist', async (data, callback) => {
       try {
+        console.log('🎵 LOAD_PLAYLIST event received:', JSON.stringify(data), 'socketId:', socket.id);
         const { roomCode, playlistId: rawPlaylistId } = data;
 
         const game = games.get(roomCode);
