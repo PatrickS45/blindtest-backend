@@ -396,6 +396,7 @@ function setupSocketHandlers(io) {
         console.log('✅ Starting round for game:', roomCode);
 
         if (!game.playlist) {
+          console.log('❌ No playlist loaded for game:', roomCode);
           const response = { success: false, error: ERRORS.NO_PLAYLIST };
           if (typeof callback === 'function') {
             return callback(response);
@@ -403,19 +404,25 @@ function setupSocketHandlers(io) {
           return socket.emit('round_started', response);
         }
 
+        console.log('📀 Playlist loaded:', game.playlist.name, 'tracks:', game.playlist.usableTracks);
+
         // Démarrer le round via le moteur
+        console.log('🎲 Calling gameEngine.startRound...');
         const round = await gameEngine.startRound(game);
+        console.log('✅ Round started successfully, track:', round.track.name);
 
         // Préparer les données pour le client
         const roundData = round.toClientData(true); // Cacher la réponse
 
         // Notifier tous les clients
+        console.log('📡 Emitting round_started to room:', roomCode);
         io.to(roomCode).emit('round_started', {
           roundNumber: game.roundNumber,
           ...roundData
         });
 
         // IMPORTANT: Envoyer aussi play_track pour la compatibilité frontend
+        console.log('🎵 Emitting play_track - URL:', round.track.preview_url);
         io.to(roomCode).emit('play_track', {
           previewUrl: round.track.preview_url,
           duration: round.config.extractDuration,
@@ -428,6 +435,8 @@ function setupSocketHandlers(io) {
         }
 
       } catch (error) {
+        console.error('❌ ERROR in start_round:', error.message);
+        console.error('Stack:', error.stack);
         logger.error('Failed to start round', { error: error.message, stack: error.stack });
         const response = { success: false, error: error.message };
 
