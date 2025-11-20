@@ -44,7 +44,9 @@ module.exports = {
     timerDuration: 10,
     musicVolume: 70,
     soundEffectsVolume: 80,
-    qcmType: 'artist'
+    qcmType: 'artist',
+    numberOfRounds: 10, // nombre de manches dans la partie
+    randomStart: true // démarrer la musique aléatoirement dans le morceau
   },
 
   // Configurations de scoring par mode
