@@ -439,6 +439,36 @@ function setupSocketHandlers(io) {
           artist: round.track.artists?.[0]?.name || 'Unknown'
         });
 
+        // Clear previous timer if exists
+        if (game.roundTimer) {
+          clearTimeout(game.roundTimer);
+        }
+
+        // Démarrer un timer de 30 secondes pour skip automatique
+        console.log('⏱️ Starting 30s auto-skip timer');
+        game.roundTimer = setTimeout(() => {
+          console.log('⏱️ Timer expired - auto-skipping round');
+
+          // Vérifier que le round est toujours actif
+          if (game.currentRound && game.currentRound.roundId === round.roundId) {
+            // Terminer le round sans gagnant
+            game.currentRound.end();
+
+            // Notifier tous les clients
+            io.to(roomCode).emit('round_result', {
+              playerName: null,
+              isCorrect: false,
+              pointsAwarded: 0,
+              correctAnswer: `${round.track.name} - ${round.track.artists[0].name}`,
+              leaderboard: game.getLeaderboard(),
+              timeout: true,
+              message: 'Temps écoulé ! Personne n\'a trouvé.'
+            });
+          }
+
+          game.roundTimer = null;
+        }, 30000); // 30 secondes
+
         if (typeof callback === 'function') {
           callback({ success: true });
         }
@@ -549,13 +579,40 @@ function setupSocketHandlers(io) {
 
         console.log('✅ Validating answer for player:', targetPlayerId, 'isCorrect:', isCorrect);
 
-        // Valider via le moteur
-        const result = gameEngine.validateAnswer(game, targetPlayerId, isCorrect);
+        if (isCorrect) {
+          // Clear le timer de skip automatique
+          if (game.roundTimer) {
+            clearTimeout(game.roundTimer);
+            game.roundTimer = null;
+            console.log('⏱️ Round timer cleared - correct answer found');
+          }
 
-        console.log('📊 Validation result:', JSON.stringify(result));
+          // Bonne réponse : fin du round
+          const result = gameEngine.validateAnswer(game, targetPlayerId, isCorrect);
+          console.log('📊 Validation result (correct):', JSON.stringify(result));
 
-        // Notifier tous les clients
-        io.to(roomCode).emit('round_result', result);
+          // Notifier tous les clients de la fin du round
+          io.to(roomCode).emit('round_result', result);
+        } else {
+          // Mauvaise réponse : reprendre la musique et continuer
+          console.log('❌ Wrong answer - resuming music for other players');
+
+          // Réinitialiser l'ordre de buzz pour ce joueur (il ne peut plus buzzer)
+          const round = game.currentRound;
+          if (round) {
+            // Marquer que ce joueur a tenté et échoué
+            round.buzzOrder = round.buzzOrder.filter(b => b.playerId !== targetPlayerId);
+          }
+
+          // Reprendre la musique
+          io.to(roomCode).emit('resume_audio');
+
+          // Notifier que la réponse était fausse mais le jeu continue
+          io.to(roomCode).emit('wrong_answer_continue', {
+            playerName: game.getPlayer(targetPlayerId)?.name,
+            message: 'Mauvaise réponse, la musique reprend !'
+          });
+        }
 
       } catch (error) {
         console.error('❌ ERROR in validate_answer:', error.message);

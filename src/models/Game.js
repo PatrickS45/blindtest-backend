@@ -17,6 +17,7 @@ class Game {
     this.usedTrackIndices = new Set(); // Indices des tracks déjà joués
     this.currentRound = null;
     this.roundNumber = 0;
+    this.roundTimer = null; // Timer pour skip automatique après 30s
     this.createdAt = Date.now();
     this.lastActivity = Date.now();
 
