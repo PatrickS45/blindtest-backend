@@ -19,6 +19,28 @@ class Round {
     this.answers = new Map(); // playerId -> { answer, timestamp }
     this.result = null;
     this.selectedTarget = null; // Pour mode Tueurs à Gages
+    this.startOffset = this.calculateStartOffset(); // Offset de démarrage pour randomStart
+  }
+
+  /**
+   * Calcule l'offset de démarrage aléatoire si randomStart est activé
+   * @returns {number} Offset en secondes (0 si randomStart désactivé)
+   */
+  calculateStartOffset() {
+    if (!this.config.randomStart) {
+      return 0;
+    }
+
+    // Démarrage aléatoire entre 10% et 70% de la durée du track
+    // Supposons que la durée du track est dans track.duration_ms (Spotify format)
+    const trackDuration = this.track.duration_ms ? this.track.duration_ms / 1000 : 180; // Défaut 3 minutes si non spécifié
+
+    // Calculer un offset aléatoire entre 10% et 70%
+    const minPercent = 0.10;
+    const maxPercent = 0.70;
+    const randomPercent = minPercent + Math.random() * (maxPercent - minPercent);
+
+    return Math.floor(trackDuration * randomPercent);
   }
 
   /**
@@ -155,7 +177,8 @@ class Round {
       track: {
         id: this.track.id,
         previewUrl: this.track.preview_url,
-        duration: this.config.extractDuration
+        duration: this.config.extractDuration,
+        startOffset: this.startOffset // Offset de démarrage en secondes
       },
       config: this.config
     };
