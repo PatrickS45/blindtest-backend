@@ -214,6 +214,28 @@ class Game {
   }
 
   /**
+   * Vérifie si la partie a atteint le nombre maximum de manches
+   * @returns {boolean}
+   */
+  hasReachedMaxRounds() {
+    return this.roundNumber >= this.config.numberOfRounds;
+  }
+
+  /**
+   * Termine la partie et définit le statut à FINISHED
+   */
+  endGame() {
+    this.status = GAME_STATUS.FINISHED;
+    this.lastActivity = Date.now();
+
+    logger.info('Game ended', {
+      roomCode: this.roomCode,
+      totalRounds: this.roundNumber,
+      finalLeaderboard: this.getLeaderboard()
+    });
+  }
+
+  /**
    * Sérialise la partie pour envoi au client
    * @returns {Object}
    */

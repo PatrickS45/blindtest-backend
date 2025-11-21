@@ -104,12 +104,26 @@ function validateQCMType(type) {
 function validateGameConfig(config = {}) {
   const { DEFAULT_CONFIG } = require('../config/constants');
 
+  // Validate numberOfRounds (5-20)
+  let numberOfRounds = Number(config.numberOfRounds);
+  if (isNaN(numberOfRounds) || numberOfRounds < 5 || numberOfRounds > 20) {
+    numberOfRounds = DEFAULT_CONFIG.numberOfRounds;
+  }
+
+  // Validate randomStart (boolean)
+  let randomStart = DEFAULT_CONFIG.randomStart;
+  if (typeof config.randomStart === 'boolean') {
+    randomStart = config.randomStart;
+  }
+
   return {
     extractDuration: Number(config.extractDuration) || DEFAULT_CONFIG.extractDuration,
     timerDuration: Number(config.timerDuration) || DEFAULT_CONFIG.timerDuration,
     musicVolume: Math.max(0, Math.min(100, Number(config.musicVolume) || DEFAULT_CONFIG.musicVolume)),
     soundEffectsVolume: Math.max(0, Math.min(100, Number(config.soundEffectsVolume) || DEFAULT_CONFIG.soundEffectsVolume)),
-    qcmType: validateQCMType(config.qcmType) ? config.qcmType : DEFAULT_CONFIG.qcmType
+    qcmType: validateQCMType(config.qcmType) ? config.qcmType : DEFAULT_CONFIG.qcmType,
+    numberOfRounds,
+    randomStart
   };
 }
 

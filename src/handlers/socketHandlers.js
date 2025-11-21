@@ -54,6 +54,35 @@ function cleanupInactiveGames() {
 setInterval(cleanupInactiveGames, 5 * 60 * 1000);
 
 /**
+ * Vérifie si le jeu doit se terminer et émet l'événement game_finished si nécessaire
+ * @param {SocketIO.Server} io
+ * @param {Game} game
+ * @param {string} roomCode
+ */
+function checkAndEmitGameEnd(io, game, roomCode) {
+  if (game.hasReachedMaxRounds()) {
+    game.endGame();
+
+    // Émettre l'événement de fin de partie avec les résultats finaux
+    io.to(roomCode).emit('game_finished', {
+      finalLeaderboard: game.getLeaderboard(),
+      totalRounds: game.roundNumber,
+      message: 'Partie terminée ! Voici le classement final.',
+      winner: game.getLeaderboard()[0] // Le premier du classement
+    });
+
+    logger.info('Game finished - max rounds reached', {
+      roomCode,
+      totalRounds: game.roundNumber,
+      winner: game.getLeaderboard()[0]
+    });
+
+    return true; // Game ended
+  }
+  return false; // Game continues
+}
+
+/**
  * Configure tous les handlers Socket.IO
  * @param {SocketIO.Server} io
  */
@@ -474,6 +503,9 @@ function setupSocketHandlers(io) {
               timeout: true,
               message: 'Temps écoulé ! Personne n\'a trouvé.'
             });
+
+            // Vérifier si le jeu doit se terminer
+            checkAndEmitGameEnd(io, game, roomCode);
           }
 
           game.roundTimer = null;
@@ -603,6 +635,9 @@ function setupSocketHandlers(io) {
 
           // Notifier tous les clients de la fin du round
           io.to(roomCode).emit('round_result', result);
+
+          // Vérifier si le jeu doit se terminer
+          checkAndEmitGameEnd(io, game, roomCode);
         } else {
           // Mauvaise réponse : reprendre la musique et continuer
           console.log('❌ Wrong answer - resuming music for other players');
@@ -645,6 +680,9 @@ function setupSocketHandlers(io) {
         // Notifier tous les clients
         io.to(roomCode).emit('qcm_result', result);
 
+        // Vérifier si le jeu doit se terminer
+        checkAndEmitGameEnd(io, game, roomCode);
+
       } catch (error) {
         logger.error('QCM validation error', { error: error.message });
       }
@@ -681,6 +719,9 @@ function setupSocketHandlers(io) {
         // Notifier tous les clients
         io.to(roomCode).emit('bomb_explosion_result', result);
 
+        // Vérifier si le jeu doit se terminer
+        checkAndEmitGameEnd(io, game, roomCode);
+
       } catch (error) {
         logger.error('Bomb explosion error', { error: error.message });
       }
@@ -698,6 +739,9 @@ function setupSocketHandlers(io) {
 
         // Notifier tous les clients
         io.to(roomCode).emit('round_skipped', result);
+
+        // Vérifier si le jeu doit se terminer
+        checkAndEmitGameEnd(io, game, roomCode);
 
       } catch (error) {
         logger.error('Skip round error', { error: error.message });
