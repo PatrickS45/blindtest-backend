@@ -540,6 +540,12 @@ function setupSocketHandlers(io) {
         const player = game.getPlayer(socket.id);
         if (!player) return;
 
+        // Vérifier qu'il y a un round actif et non terminé
+        if (!game.currentRound || game.currentRound.endTime) {
+          console.log('⚠️ Buzz rejected - no active round');
+          return;
+        }
+
         // Enregistrer le buzz
         const buzzData = gameEngine.handleBuzz(game, socket.id, player.name);
 
@@ -639,13 +645,23 @@ function setupSocketHandlers(io) {
           // Vérifier si le jeu doit se terminer
           checkAndEmitGameEnd(io, game, roomCode);
         } else {
-          // Mauvaise réponse : reprendre la musique et continuer
+          // Mauvaise réponse : appliquer points négatifs et continuer
           console.log('❌ Wrong answer - resuming music for other players');
 
-          // Réinitialiser l'ordre de buzz pour ce joueur (il ne peut plus buzzer)
           const round = game.currentRound;
-          if (round) {
-            // Marquer que ce joueur a tenté et échoué
+          const player = game.getPlayer(targetPlayerId);
+
+          let pointsAwarded = 0;
+          if (round && player) {
+            // Appliquer les points négatifs selon le mode
+            const { SCORING_CONFIGS } = require('../config/constants');
+            const scoringConfig = SCORING_CONFIGS[game.mode];
+            pointsAwarded = scoringConfig?.incorrect || -5;
+            player.score += pointsAwarded;
+
+            console.log(`⚠️ Wrong answer penalty: ${pointsAwarded} points for ${player.name}`);
+
+            // Retirer ce joueur de l'ordre de buzz (il ne peut plus buzzer ce round)
             round.buzzOrder = round.buzzOrder.filter(b => b.playerId !== targetPlayerId);
           }
 
@@ -654,7 +670,9 @@ function setupSocketHandlers(io) {
 
           // Notifier que la réponse était fausse mais le jeu continue
           io.to(roomCode).emit('wrong_answer_continue', {
-            playerName: game.getPlayer(targetPlayerId)?.name,
+            playerName: player?.name,
+            pointsAwarded: pointsAwarded,
+            leaderboard: game.getLeaderboard(),
             message: 'Mauvaise réponse, la musique reprend !'
           });
         }
