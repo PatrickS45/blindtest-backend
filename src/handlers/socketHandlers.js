@@ -37,6 +37,14 @@ function generateRoomCode() {
 }
 
 /**
+ * Génère un ID d'équipe unique
+ * @returns {string}
+ */
+function generateTeamId() {
+  return `team-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+/**
  * Nettoie les parties inactives
  */
 function cleanupInactiveGames() {
@@ -63,18 +71,26 @@ function checkAndEmitGameEnd(io, game, roomCode) {
   if (game.hasReachedMaxRounds()) {
     game.endGame();
 
+    const leaderboard = game.getLeaderboard();
+    const teamLeaderboard = game.getTeamLeaderboard();
+    const winner = leaderboard[0];
+    const winnerTeam = teamLeaderboard.length > 0 ? teamLeaderboard[0] : null;
+
     // Émettre l'événement de fin de partie avec les résultats finaux
     io.to(roomCode).emit('game_finished', {
-      finalLeaderboard: game.getLeaderboard(),
+      finalLeaderboard: leaderboard,
+      teamLeaderboard: teamLeaderboard,
       totalRounds: game.roundNumber,
       message: 'Partie terminée ! Voici le classement final.',
-      winner: game.getLeaderboard()[0] // Le premier du classement
+      winner: winner,
+      winnerTeam: winnerTeam
     });
 
     logger.info('Game finished - max rounds reached', {
       roomCode,
       totalRounds: game.roundNumber,
-      winner: game.getLeaderboard()[0]
+      winner: winner,
+      winnerTeam: winnerTeam
     });
 
     return true; // Game ended
@@ -106,7 +122,11 @@ function setupSocketHandlers(io) {
         }
 
         const mode = data?.mode || GAME_MODES.ACCUMUL_POINTS;
-        const config = validators.validateGameConfig(data?.config);
+        const playMode = data?.playMode || 'solo';
+        const config = {
+          ...validators.validateGameConfig(data?.config),
+          playMode
+        };
 
         // Générer code unique
         const roomCode = generateRoomCode();
@@ -120,7 +140,7 @@ function setupSocketHandlers(io) {
 
         logger.info('Game created', { roomCode, mode, hostId: socket.id });
 
-        const response = { success: true, roomCode, mode, config };
+        const response = { success: true, roomCode, mode, playMode, config };
 
         // Support both callback and event emission
         if (typeof callback === 'function') {
@@ -270,6 +290,234 @@ function setupSocketHandlers(io) {
       }
     });
 
+    // ==================== GESTION DES ÉQUIPES ====================
+
+    // Créer une équipe (Host uniquement)
+    socket.on('create_team', (data) => {
+      try {
+        const { roomCode, teamName, teamColor } = data;
+
+        const game = games.get(roomCode);
+        if (!game) {
+          return socket.emit('error', { message: 'Partie introuvable' });
+        }
+
+        // Vérifier que c'est bien l'hôte
+        if (socket.id !== game.hostId) {
+          return socket.emit('error', { message: 'Seul l\'hôte peut créer des équipes' });
+        }
+
+        // Vérifier le mode équipe
+        if (game.playMode !== 'team') {
+          return socket.emit('error', { message: 'Le mode équipe n\'est pas activé' });
+        }
+
+        // Vérifier la limite d'équipes
+        if (game.teams.size >= 6) {
+          return socket.emit('error', { message: 'Nombre maximum d\'équipes atteint (6)' });
+        }
+
+        // Créer l'équipe
+        const teamId = generateTeamId();
+        const team = game.createTeam(teamId, teamName, teamColor);
+
+        logger.info('Team created', { roomCode, teamId, teamName });
+
+        // Notifier tous les clients
+        io.to(roomCode).emit('team_created', {
+          team,
+          teams: Array.from(game.teams.values())
+        });
+
+      } catch (error) {
+        logger.error('Failed to create team', { error: error.message });
+        socket.emit('error', { message: error.message });
+      }
+    });
+
+    // Rejoindre une équipe (Player)
+    socket.on('join_team', (data) => {
+      try {
+        const { roomCode, teamId } = data;
+
+        const game = games.get(roomCode);
+        if (!game) {
+          return socket.emit('error', { message: 'Partie introuvable' });
+        }
+
+        const team = game.teams.get(teamId);
+        if (!team) {
+          return socket.emit('error', { message: 'Équipe introuvable' });
+        }
+
+        // Assigner le joueur à l'équipe
+        const success = game.assignPlayerToTeam(socket.id, teamId);
+        if (!success) {
+          return socket.emit('error', { message: 'Impossible de rejoindre l\'équipe' });
+        }
+
+        logger.info('Player joined team', { roomCode, playerId: socket.id, teamId });
+
+        // Notifier tous les clients
+        io.to(roomCode).emit('player_joined_team', {
+          playerId: socket.id,
+          teamId,
+          team: game.teams.get(teamId),
+          teams: Array.from(game.teams.values())
+        });
+
+      } catch (error) {
+        logger.error('Failed to join team', { error: error.message });
+        socket.emit('error', { message: error.message });
+      }
+    });
+
+    // Quitter une équipe (Player)
+    socket.on('leave_team', (data) => {
+      try {
+        const { roomCode, playerId } = data;
+        const targetPlayerId = playerId || socket.id; // Permet à l'hôte de retirer un joueur
+
+        const game = games.get(roomCode);
+        if (!game) {
+          return socket.emit('error', { message: 'Partie introuvable' });
+        }
+
+        // Vérifier les permissions
+        if (targetPlayerId !== socket.id && socket.id !== game.hostId) {
+          return socket.emit('error', { message: 'Permission refusée' });
+        }
+
+        const player = game.players.get(targetPlayerId);
+        if (!player || !player.teamId) {
+          return socket.emit('error', { message: 'Joueur non trouvé ou pas dans une équipe' });
+        }
+
+        const oldTeamId = player.teamId;
+        const success = game.removePlayerFromTeam(targetPlayerId);
+        if (!success) {
+          return socket.emit('error', { message: 'Impossible de quitter l\'équipe' });
+        }
+
+        logger.info('Player left team', { roomCode, playerId: targetPlayerId, teamId: oldTeamId });
+
+        // Notifier tous les clients
+        io.to(roomCode).emit('player_left_team', {
+          playerId: targetPlayerId,
+          teamId: oldTeamId,
+          teams: Array.from(game.teams.values())
+        });
+
+      } catch (error) {
+        logger.error('Failed to leave team', { error: error.message });
+        socket.emit('error', { message: error.message });
+      }
+    });
+
+    // Mettre à jour une équipe (Host uniquement)
+    socket.on('update_team', (data) => {
+      try {
+        const { roomCode, teamId, teamName, teamColor } = data;
+
+        const game = games.get(roomCode);
+        if (!game) {
+          return socket.emit('error', { message: 'Partie introuvable' });
+        }
+
+        // Vérifier que c'est bien l'hôte
+        if (socket.id !== game.hostId) {
+          return socket.emit('error', { message: 'Seul l\'hôte peut modifier les équipes' });
+        }
+
+        const team = game.updateTeam(teamId, teamName, teamColor);
+        if (!team) {
+          return socket.emit('error', { message: 'Équipe introuvable' });
+        }
+
+        logger.info('Team updated', { roomCode, teamId, teamName });
+
+        // Notifier tous les clients
+        io.to(roomCode).emit('team_updated', {
+          team,
+          teams: Array.from(game.teams.values())
+        });
+
+      } catch (error) {
+        logger.error('Failed to update team', { error: error.message });
+        socket.emit('error', { message: error.message });
+      }
+    });
+
+    // Supprimer une équipe (Host uniquement)
+    socket.on('delete_team', (data) => {
+      try {
+        const { roomCode, teamId } = data;
+
+        const game = games.get(roomCode);
+        if (!game) {
+          return socket.emit('error', { message: 'Partie introuvable' });
+        }
+
+        // Vérifier que c'est bien l'hôte
+        if (socket.id !== game.hostId) {
+          return socket.emit('error', { message: 'Seul l\'hôte peut supprimer les équipes' });
+        }
+
+        const success = game.deleteTeam(teamId);
+        if (!success) {
+          return socket.emit('error', { message: 'Équipe introuvable' });
+        }
+
+        logger.info('Team deleted', { roomCode, teamId });
+
+        // Notifier tous les clients
+        io.to(roomCode).emit('team_deleted', {
+          teamId,
+          teams: Array.from(game.teams.values())
+        });
+
+      } catch (error) {
+        logger.error('Failed to delete team', { error: error.message });
+        socket.emit('error', { message: error.message });
+      }
+    });
+
+    // Assigner un joueur à une équipe (Host uniquement)
+    socket.on('assign_player_to_team', (data) => {
+      try {
+        const { roomCode, playerId, teamId } = data;
+
+        const game = games.get(roomCode);
+        if (!game) {
+          return socket.emit('error', { message: 'Partie introuvable' });
+        }
+
+        // Vérifier que c'est bien l'hôte
+        if (socket.id !== game.hostId) {
+          return socket.emit('error', { message: 'Seul l\'hôte peut assigner les joueurs' });
+        }
+
+        const success = game.assignPlayerToTeam(playerId, teamId);
+        if (!success) {
+          return socket.emit('error', { message: 'Impossible d\'assigner le joueur' });
+        }
+
+        logger.info('Player assigned to team', { roomCode, playerId, teamId });
+
+        // Notifier tous les clients
+        io.to(roomCode).emit('player_joined_team', {
+          playerId,
+          teamId,
+          team: game.teams.get(teamId),
+          teams: Array.from(game.teams.values())
+        });
+
+      } catch (error) {
+        logger.error('Failed to assign player to team', { error: error.message });
+        socket.emit('error', { message: error.message });
+      }
+    });
+
     // ==================== REJOINDRE COMME HÔTE (RECONNEXION) ====================
     socket.on('join_as_host', (data) => {
       try {
@@ -300,6 +548,8 @@ function setupSocketHandlers(io) {
         socket.emit('game_state', {
           roomCode,
           players: game.getPlayersArray(),
+          teams: Array.from(game.teams.values()),
+          playMode: game.playMode,
           mode: game.mode,
           status: game.status,
           playlist: game.playlist ? {
@@ -500,6 +750,7 @@ function setupSocketHandlers(io) {
               pointsAwarded: 0,
               correctAnswer: `${round.track.name} - ${round.track.artists[0].name}`,
               leaderboard: game.getLeaderboard(),
+              teamLeaderboard: game.getTeamLeaderboard(),
               timeout: true,
               message: 'Temps écoulé ! Personne n\'a trouvé.'
             });
@@ -673,6 +924,7 @@ function setupSocketHandlers(io) {
             playerName: player?.name,
             pointsAwarded: pointsAwarded,
             leaderboard: game.getLeaderboard(),
+            teamLeaderboard: game.getTeamLeaderboard(),
             message: 'Mauvaise réponse, la musique reprend !'
           });
         }

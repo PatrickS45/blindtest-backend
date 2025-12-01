@@ -10,6 +10,8 @@ class Game {
     this.hostId = hostId;
     this.displayId = null;
     this.players = new Map(); // playerId -> Player object
+    this.teams = new Map(); // teamId -> Team object
+    this.playMode = config?.playMode || 'solo'; // 'solo' or 'team'
     this.status = GAME_STATUS.WAITING;
     this.mode = mode;
     this.config = config;
@@ -42,7 +44,8 @@ class Game {
       buzzOrder: null,
       qcmAnswer: null,
       isConnected: true,
-      joinedAt: Date.now()
+      joinedAt: Date.now(),
+      teamId: null // Ajout pour le mode équipe
     };
 
     this.players.set(playerId, player);
@@ -236,6 +239,171 @@ class Game {
   }
 
   /**
+   * Crée une nouvelle équipe
+   * @param {string} teamId
+   * @param {string} teamName
+   * @param {string} teamColor
+   * @returns {Object}
+   */
+  createTeam(teamId, teamName, teamColor) {
+    const team = {
+      id: teamId,
+      name: teamName,
+      color: teamColor,
+      score: 0,
+      memberIds: [],
+      createdAt: Date.now()
+    };
+
+    this.teams.set(teamId, team);
+    this.lastActivity = Date.now();
+
+    logger.info('Team created', { roomCode: this.roomCode, teamId, teamName });
+    return team;
+  }
+
+  /**
+   * Met à jour une équipe
+   * @param {string} teamId
+   * @param {string} teamName
+   * @param {string} teamColor
+   * @returns {Object|null}
+   */
+  updateTeam(teamId, teamName, teamColor) {
+    const team = this.teams.get(teamId);
+    if (!team) return null;
+
+    if (teamName) team.name = teamName;
+    if (teamColor) team.color = teamColor;
+    this.lastActivity = Date.now();
+
+    logger.info('Team updated', { roomCode: this.roomCode, teamId, teamName });
+    return team;
+  }
+
+  /**
+   * Supprime une équipe
+   * @param {string} teamId
+   * @returns {boolean}
+   */
+  deleteTeam(teamId) {
+    const team = this.teams.get(teamId);
+    if (!team) return false;
+
+    // Retirer tous les joueurs de l'équipe
+    for (const player of this.players.values()) {
+      if (player.teamId === teamId) {
+        player.teamId = null;
+      }
+    }
+
+    this.teams.delete(teamId);
+    this.lastActivity = Date.now();
+
+    logger.info('Team deleted', { roomCode: this.roomCode, teamId });
+    return true;
+  }
+
+  /**
+   * Assigne un joueur à une équipe
+   * @param {string} playerId
+   * @param {string} teamId
+   * @returns {boolean}
+   */
+  assignPlayerToTeam(playerId, teamId) {
+    const player = this.players.get(playerId);
+    const team = this.teams.get(teamId);
+
+    if (!player || !team) return false;
+
+    // Retirer de l'ancienne équipe si nécessaire
+    if (player.teamId) {
+      const oldTeam = this.teams.get(player.teamId);
+      if (oldTeam) {
+        oldTeam.memberIds = oldTeam.memberIds.filter(id => id !== playerId);
+      }
+    }
+
+    // Ajouter à la nouvelle équipe
+    player.teamId = teamId;
+    if (!team.memberIds.includes(playerId)) {
+      team.memberIds.push(playerId);
+    }
+
+    this.lastActivity = Date.now();
+
+    logger.info('Player assigned to team', {
+      roomCode: this.roomCode,
+      playerId,
+      teamId
+    });
+
+    return true;
+  }
+
+  /**
+   * Retire un joueur d'une équipe
+   * @param {string} playerId
+   * @returns {boolean}
+   */
+  removePlayerFromTeam(playerId) {
+    const player = this.players.get(playerId);
+    if (!player || !player.teamId) return false;
+
+    const team = this.teams.get(player.teamId);
+    if (team) {
+      team.memberIds = team.memberIds.filter(id => id !== playerId);
+    }
+
+    player.teamId = null;
+    this.lastActivity = Date.now();
+
+    logger.info('Player removed from team', { roomCode: this.roomCode, playerId });
+    return true;
+  }
+
+  /**
+   * Recalcule les scores des équipes
+   */
+  recalculateTeamScores() {
+    // Réinitialiser les scores d'équipe
+    for (const team of this.teams.values()) {
+      team.score = 0;
+    }
+
+    // Sommer les scores des joueurs
+    for (const player of this.players.values()) {
+      if (player.teamId) {
+        const team = this.teams.get(player.teamId);
+        if (team) {
+          team.score += player.score;
+        }
+      }
+    }
+  }
+
+  /**
+   * Retourne le classement des équipes
+   * @returns {Array}
+   */
+  getTeamLeaderboard() {
+    if (this.playMode !== 'team') return [];
+
+    this.recalculateTeamScores();
+
+    return Array.from(this.teams.values())
+      .sort((a, b) => b.score - a.score)
+      .map(team => ({
+        id: team.id,
+        name: team.name,
+        color: team.color,
+        score: team.score,
+        memberIds: team.memberIds,
+        createdAt: team.createdAt
+      }));
+  }
+
+  /**
    * Sérialise la partie pour envoi au client
    * @returns {Object}
    */
@@ -244,7 +412,9 @@ class Game {
       roomCode: this.roomCode,
       status: this.status,
       mode: this.mode,
+      playMode: this.playMode,
       playerCount: this.players.size,
+      teamCount: this.teams.size,
       roundNumber: this.roundNumber,
       hasPlaylist: !!this.playlist,
       playlistName: this.playlist?.name

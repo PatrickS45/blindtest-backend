@@ -274,7 +274,8 @@ class GameEngine {
     return {
       ...result,
       correctAnswer: `${round.track.name} - ${round.track.artists[0].name}`,
-      leaderboard: game.getLeaderboard()
+      leaderboard: game.getLeaderboard(),
+      teamLeaderboard: game.getTeamLeaderboard()
     };
   }
 
@@ -325,7 +326,8 @@ class GameEngine {
       results,
       correctAnswer: round.qcm.correctAnswer,
       correctOption: round.qcm.options[correctOptionIndex].text,
-      leaderboard: game.getLeaderboard()
+      leaderboard: game.getLeaderboard(),
+      teamLeaderboard: game.getTeamLeaderboard()
     };
   }
 
@@ -366,7 +368,8 @@ class GameEngine {
 
     return {
       ...round.result,
-      leaderboard: game.getLeaderboard()
+      leaderboard: game.getLeaderboard(),
+      teamLeaderboard: game.getTeamLeaderboard()
     };
   }
 
@@ -419,7 +422,8 @@ class GameEngine {
     return {
       skipped: true,
       correctAnswer: `${round.track.name} - ${round.track.artists[0].name}`,
-      leaderboard: game.getLeaderboard()
+      leaderboard: game.getLeaderboard(),
+      teamLeaderboard: game.getTeamLeaderboard()
     };
   }
 }
