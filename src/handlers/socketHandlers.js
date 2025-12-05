@@ -1027,17 +1027,44 @@ function setupSocketHandlers(io) {
         const player = game.getPlayer(socket.id);
 
         if (player) {
-          // Supprimer le joueur
-          game.removePlayer(socket.id);
+          // Marquer le joueur comme déconnecté au lieu de le supprimer immédiatement
+          game.disconnectPlayer(socket.id);
 
-          // Notifier les autres
-          io.to(roomCode).emit('player_left', {
+          // Notifier les autres joueurs qu'un joueur s'est déconnecté (mais reste dans la partie)
+          io.to(roomCode).emit('player_disconnected', {
             playerId: socket.id,
             playerName: player.name,
             players: game.getPlayersArray()
           });
 
-          logger.info('Player left', { roomCode, playerName: player.name });
+          logger.info('Player disconnected - keeping in game for reconnection', {
+            roomCode,
+            playerName: player.name
+          });
+
+          // Donner une période de grâce de 5 minutes pour la reconnexion
+          setTimeout(() => {
+            const currentGame = games.get(roomCode);
+            if (currentGame) {
+              const currentPlayer = currentGame.getPlayer(socket.id);
+              // Supprimer uniquement si le joueur n'a pas reconnecté (même ID socket)
+              if (currentPlayer && !currentPlayer.isConnected) {
+                currentGame.removePlayer(socket.id);
+
+                // Notifier que le joueur a définitivement quitté
+                io.to(roomCode).emit('player_left', {
+                  playerId: socket.id,
+                  playerName: currentPlayer.name,
+                  players: currentGame.getPlayersArray()
+                });
+
+                logger.info('Player removed after reconnection timeout', {
+                  roomCode,
+                  playerName: currentPlayer.name
+                });
+              }
+            }
+          }, 300000); // 5 minutes de grâce pour reconnexion
         }
 
         // Si c'est l'hôte, NE PAS supprimer immédiatement
@@ -1048,7 +1075,7 @@ function setupSocketHandlers(io) {
           // Notifier que l'hôte s'est déconnecté (les clients peuvent afficher un message)
           io.to(roomCode).emit('host_disconnected');
 
-          // Supprimer la partie après 60 secondes si l'hôte ne se reconnecte pas
+          // Supprimer la partie après 5 minutes si l'hôte ne se reconnecte pas
           setTimeout(() => {
             const currentGame = games.get(roomCode);
             // Vérifier que la partie existe toujours et que l'hôte n'a pas changé
