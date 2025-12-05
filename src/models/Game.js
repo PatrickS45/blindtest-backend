@@ -99,6 +99,26 @@ class Game {
   }
 
   /**
+   * Marque un joueur comme déconnecté (sans le supprimer)
+   * @param {string} playerId
+   * @returns {Object|null} Le joueur déconnecté ou null
+   */
+  disconnectPlayer(playerId) {
+    const player = this.players.get(playerId);
+    if (player) {
+      player.isConnected = false;
+      this.lastActivity = Date.now();
+      logger.info('Player marked as disconnected', {
+        roomCode: this.roomCode,
+        playerId,
+        playerName: player.name
+      });
+      return player;
+    }
+    return null;
+  }
+
+  /**
    * Supprime un joueur
    * @param {string} playerId
    * @returns {boolean}
