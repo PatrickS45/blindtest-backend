@@ -89,11 +89,29 @@ class Game {
       player.isConnected = true;
       this.players.set(newPlayerId, player);
 
+      // Mettre à jour les memberIds dans l'équipe si le joueur est dans une équipe
+      if (player.teamId) {
+        const team = this.teams.get(player.teamId);
+        if (team) {
+          // Retirer l'ancien ID et ajouter le nouveau
+          team.memberIds = team.memberIds.filter(id => id !== oldPlayerId);
+          if (!team.memberIds.includes(newPlayerId)) {
+            team.memberIds.push(newPlayerId);
+          }
+          logger.info('Player team membership updated after reconnection', {
+            roomCode: this.roomCode,
+            playerName: player.name,
+            teamId: player.teamId
+          });
+        }
+      }
+
       logger.info('Player reconnected', {
         roomCode: this.roomCode,
         playerName: player.name,
         oldId: oldPlayerId,
-        newId: newPlayerId
+        newId: newPlayerId,
+        teamId: player.teamId || 'none'
       });
     }
   }

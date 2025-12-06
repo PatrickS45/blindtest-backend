@@ -271,11 +271,19 @@ class GameEngine {
       ...result
     });
 
+    const teamLeaderboard = game.getTeamLeaderboard();
+    console.log('📊 SCORES MIS À JOUR:', {
+      player: player.name,
+      newScore: player.score,
+      pointsAwarded,
+      teamLeaderboard: teamLeaderboard.map(t => ({ name: t.name, score: t.score }))
+    });
+
     return {
       ...result,
       correctAnswer: `${round.track.name} - ${round.track.artists[0].name}`,
       leaderboard: game.getLeaderboard(),
-      teamLeaderboard: game.getTeamLeaderboard()
+      teamLeaderboard: teamLeaderboard
     };
   }
 

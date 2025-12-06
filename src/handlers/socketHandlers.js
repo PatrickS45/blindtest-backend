@@ -230,16 +230,36 @@ function setupSocketHandlers(io) {
         // Reconnexion
         const existingPlayer = game.findPlayerByName(sanitizedName);
         if (existingPlayer) {
+          console.log('🔄 RECONNEXION - Joueur trouvé:', {
+            name: sanitizedName,
+            oldId: existingPlayer.id,
+            newId: socket.id,
+            currentScore: existingPlayer.score,
+            teamId: existingPlayer.teamId || 'none'
+          });
+
           game.reconnectPlayer(existingPlayer.id, socket.id);
           socket.join(roomCode);
 
           logger.info('Player reconnected', { roomCode, playerName: sanitizedName });
 
+          // Récupérer le joueur avec le nouveau ID après reconnexion
+          const reconnectedPlayer = game.getPlayer(socket.id);
+
+          console.log('✅ RECONNEXION - Joueur après mise à jour:', {
+            name: reconnectedPlayer.name,
+            id: reconnectedPlayer.id,
+            score: reconnectedPlayer.score,
+            teamId: reconnectedPlayer.teamId || 'none'
+          });
+
           const response = {
             success: true,
-            player: existingPlayer,
+            player: reconnectedPlayer,
             players: game.getPlayersArray(),
+            teams: Array.from(game.teams.values()),
             mode: game.mode,
+            playMode: game.playMode,
             config: game.config
           };
 
@@ -320,6 +340,13 @@ function setupSocketHandlers(io) {
         // Créer l'équipe
         const teamId = generateTeamId();
         const team = game.createTeam(teamId, teamName, teamColor);
+
+        console.log('👥 ÉQUIPE CRÉÉE:', {
+          teamId,
+          teamName,
+          teamColor,
+          totalTeams: game.teams.size
+        });
 
         logger.info('Team created', { roomCode, teamId, teamName });
 
@@ -501,6 +528,16 @@ function setupSocketHandlers(io) {
         if (!success) {
           return socket.emit('error', { message: 'Impossible d\'assigner le joueur' });
         }
+
+        const player = game.getPlayer(playerId);
+        const team = game.teams.get(teamId);
+        console.log('👤➡️👥 JOUEUR ASSIGNÉ À ÉQUIPE:', {
+          playerId,
+          playerName: player?.name,
+          teamId,
+          teamName: team?.name,
+          teamMemberCount: team?.memberIds.length
+        });
 
         logger.info('Player assigned to team', { roomCode, playerId, teamId });
 
@@ -704,8 +741,14 @@ function setupSocketHandlers(io) {
 
         // Notifier tous les clients
         console.log('📡 Emitting round_started to room:', roomCode);
+        console.log('🎮 MODE DE JEU:', {
+          mode: game.mode,
+          playMode: game.playMode,
+          config: game.config
+        });
         io.to(roomCode).emit('round_started', {
           roundNumber: game.roundNumber,
+          playMode: game.playMode,
           ...roundData
         });
 
