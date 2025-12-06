@@ -286,7 +286,9 @@ function setupSocketHandlers(io) {
           success: true,
           player,
           players: game.getPlayersArray(),
+          teams: Array.from(game.teams.values()),
           mode: game.mode,
+          playMode: game.playMode,
           config: game.config
         };
 
