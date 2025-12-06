@@ -101,6 +101,13 @@ class GameEngine {
       throw new Error('Déjà buzzé');
     }
 
+    // Pour certains modes, seul le PREMIER joueur peut buzzer
+    const SINGLE_BUZZ_MODES = ['accumul_points', 'tueurs_gages'];
+    if (SINGLE_BUZZ_MODES.includes(game.mode) && round.buzzOrder.length > 0) {
+      console.log('⚠️ Buzz rejeté - quelqu\'un a déjà buzzé en mode', game.mode);
+      throw new Error('Quelqu\'un a déjà buzzé');
+    }
+
     // Enregistrer le buzz
     const position = round.recordBuzz(playerId, playerName);
 

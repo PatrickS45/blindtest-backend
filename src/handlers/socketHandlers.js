@@ -845,6 +845,13 @@ function setupSocketHandlers(io) {
         // Enregistrer le buzz
         const buzzData = gameEngine.handleBuzz(game, socket.id, player.name);
 
+        console.log('🔔 BUZZ ACCEPTÉ:', {
+          playerId: socket.id,
+          playerName: player.name,
+          position: buzzData.position,
+          mode: game.mode
+        });
+
         // Notifier tous les clients
         io.to(roomCode).emit('buzz_locked', {
           ...buzzData,
@@ -855,7 +862,23 @@ function setupSocketHandlers(io) {
         io.to(roomCode).emit('stop_music');
 
       } catch (error) {
-        logger.error('Buzz error', { error: error.message });
+        // Gérer les cas où le buzz est rejeté
+        if (error.message === 'Déjà buzzé' || error.message === 'Quelqu\'un a déjà buzzé') {
+          console.log('⚠️ BUZZ REJETÉ:', {
+            playerId: socket.id,
+            playerName: player.name,
+            reason: error.message
+          });
+          // Informer le joueur que son buzz a été rejeté
+          socket.emit('buzz_rejected', {
+            reason: error.message,
+            message: error.message === 'Déjà buzzé'
+              ? 'Vous avez déjà buzzé !'
+              : 'Quelqu\'un a buzzé avant vous !'
+          });
+        } else {
+          logger.error('Buzz error', { error: error.message, stack: error.stack });
+        }
       }
     });
 
