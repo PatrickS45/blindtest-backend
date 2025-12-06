@@ -295,9 +295,9 @@ function setupSocketHandlers(io) {
         console.log('✅ Player join successful, response:', JSON.stringify(response));
 
         if (typeof callback === 'function') {
-          callback(response);
+          return callback(response);
         } else {
-          socket.emit('game_joined', response);
+          return socket.emit('game_joined', response);
         }
 
       } catch (error) {
