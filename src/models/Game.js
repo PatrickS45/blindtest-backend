@@ -23,7 +23,17 @@ class Game {
     this.createdAt = Date.now();
     this.lastActivity = Date.now();
 
-    logger.info('Game created', { roomCode, mode });
+    // Système de scoring personnalisé
+    this.scoringConfig = config?.scoringConfig || {
+      pointsFullCorrect: 10,      // Points si artiste ET titre corrects
+      pointsPartialCorrect: 5,    // Points si 1 sur 2 correct
+      pointsBothWrong: -5         // Pénalité si les 2 sont faux
+    };
+
+    // État du round actuel (pour la continuation de round)
+    this.currentRoundState = null; // { artistFound: boolean, titleFound: boolean, playersBuzzed: string[] }
+
+    logger.info('Game created', { roomCode, mode, scoringConfig: this.scoringConfig });
   }
 
   /**

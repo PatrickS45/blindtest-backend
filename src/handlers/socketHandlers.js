@@ -125,7 +125,8 @@ function setupSocketHandlers(io) {
         const playMode = data?.playMode || 'solo';
         const config = {
           ...validators.validateGameConfig(data?.config),
-          playMode
+          playMode,
+          scoringConfig: data?.scoringConfig // Passer le scoringConfig personnalisé
         };
 
         // Générer code unique
@@ -140,7 +141,14 @@ function setupSocketHandlers(io) {
 
         logger.info('Game created', { roomCode, mode, hostId: socket.id });
 
-        const response = { success: true, roomCode, mode, playMode, config };
+        const response = {
+          success: true,
+          roomCode,
+          mode,
+          playMode,
+          config,
+          scoringConfig: game.scoringConfig // Renvoyer la config de scoring (avec valeurs par défaut si non fourni)
+        };
 
         // Support both callback and event emission
         if (typeof callback === 'function') {
@@ -556,7 +564,8 @@ function setupSocketHandlers(io) {
             name: game.playlist.name,
             trackCount: game.playlist.usableTracks
           } : null,
-          roundNumber: game.roundNumber
+          roundNumber: game.roundNumber,
+          scoringConfig: game.scoringConfig // Ajouter la configuration de scoring
         });
 
       } catch (error) {
@@ -699,6 +708,14 @@ function setupSocketHandlers(io) {
         const round = await gameEngine.startRound(game);
         console.log('✅ Round started successfully, track:', round.track.name);
 
+        // Initialiser l'état du round pour le système de scoring détaillé
+        game.currentRoundState = {
+          artistFound: false,
+          titleFound: false,
+          playersBuzzed: []
+        };
+        console.log('🔄 Round state initialized for detailed scoring');
+
         // Préparer les données pour le client
         const roundData = round.toClientData(true); // Cacher la réponse
 
@@ -797,6 +814,15 @@ function setupSocketHandlers(io) {
           return;
         }
 
+        // Vérifier si le joueur a déjà buzzé ce round (système de scoring détaillé)
+        if (game.currentRoundState?.playersBuzzed.includes(socket.id)) {
+          console.log('⚠️ Buzz rejected - player already buzzed this round:', player.name);
+          socket.emit('buzz_rejected', {
+            message: 'Vous avez déjà buzzé pour ce round !'
+          });
+          return;
+        }
+
         // Enregistrer le buzz
         const buzzData = gameEngine.handleBuzz(game, socket.id, player.name);
 
@@ -853,7 +879,7 @@ function setupSocketHandlers(io) {
     socket.on('validate_answer', (data) => {
       try {
         console.log('✅ VALIDATE_ANSWER event received:', JSON.stringify(data), 'socketId:', socket.id);
-        const { roomCode, playerId, isCorrect } = data;
+        const { roomCode, playerId, isCorrect, detailedAnswer } = data;
 
         const game = games.get(roomCode);
         if (!game || game.hostId !== socket.id) {
@@ -876,52 +902,157 @@ function setupSocketHandlers(io) {
           return;
         }
 
-        console.log('✅ Validating answer for player:', targetPlayerId, 'isCorrect:', isCorrect);
+        const player = game.getPlayer(targetPlayerId);
+        if (!player) {
+          console.log('❌ Player not found:', targetPlayerId);
+          return;
+        }
 
-        if (isCorrect) {
+        console.log('✅ Validating answer for player:', targetPlayerId, 'isCorrect:', isCorrect, 'detailedAnswer:', detailedAnswer);
+
+        // Initialiser currentRoundState si pas déjà fait
+        if (!game.currentRoundState) {
+          game.currentRoundState = {
+            artistFound: false,
+            titleFound: false,
+            playersBuzzed: []
+          };
+        }
+
+        const roundState = game.currentRoundState;
+
+        // Ajouter le joueur à la liste des joueurs ayant buzzé
+        if (!roundState.playersBuzzed.includes(targetPlayerId)) {
+          roundState.playersBuzzed.push(targetPlayerId);
+        }
+
+        // Retirer ce joueur de l'ordre de buzz (il ne peut plus buzzer ce round)
+        if (game.currentRound) {
+          game.currentRound.buzzOrder = game.currentRound.buzzOrder.filter(b => b.playerId !== targetPlayerId);
+        }
+
+        let pointsAwarded = 0;
+        let artistCorrectNow = false;
+        let titleCorrectNow = false;
+
+        // MODE NOUVEAU : Validation détaillée (prioritaire)
+        if (detailedAnswer) {
+          const { artistCorrect, titleCorrect } = detailedAnswer;
+
+          artistCorrectNow = artistCorrect;
+          titleCorrectNow = titleCorrect;
+
+          // Calcul des points en tenant compte de ce qui a déjà été trouvé
+          if (artistCorrect && titleCorrect) {
+            // Les 2 corrects
+            if (roundState.artistFound && roundState.titleFound) {
+              // Les 2 déjà trouvés → Aucun point
+              pointsAwarded = 0;
+            } else if (roundState.artistFound || roundState.titleFound) {
+              // 1 déjà trouvé → Points partiels pour la partie manquante
+              pointsAwarded = game.scoringConfig.pointsPartialCorrect;
+            } else {
+              // Rien encore trouvé → Points complets
+              pointsAwarded = game.scoringConfig.pointsFullCorrect;
+            }
+          } else if (artistCorrect || titleCorrect) {
+            // 1 sur 2 correct
+            if ((artistCorrect && roundState.artistFound) || (titleCorrect && roundState.titleFound)) {
+              // Partie déjà trouvée → Aucun point
+              pointsAwarded = 0;
+            } else {
+              // Nouvelle partie trouvée → Points partiels
+              pointsAwarded = game.scoringConfig.pointsPartialCorrect;
+            }
+          } else {
+            // Les 2 faux → Pénalité
+            pointsAwarded = game.scoringConfig.pointsBothWrong;
+          }
+
+          // Mettre à jour ce qui a été trouvé
+          if (artistCorrect) roundState.artistFound = true;
+          if (titleCorrect) roundState.titleFound = true;
+
+          console.log(`📊 Detailed scoring: artist=${artistCorrect}, title=${titleCorrect}, points=${pointsAwarded}`);
+
+        }
+        // MODE ANCIEN : Validation simple (rétro-compatibilité)
+        else if (isCorrect !== undefined) {
+          pointsAwarded = isCorrect ? game.scoringConfig.pointsFullCorrect : game.scoringConfig.pointsBothWrong;
+          // En mode ancien, on termine le round
+          roundState.artistFound = isCorrect;
+          roundState.titleFound = isCorrect;
+
+          console.log(`📊 Simple scoring: isCorrect=${isCorrect}, points=${pointsAwarded}`);
+        }
+
+        // Mettre à jour le score du joueur
+        player.score += pointsAwarded;
+
+        // Si mode équipe, mettre à jour le score de l'équipe
+        if (game.playMode === 'team' && player.teamId) {
+          const team = game.teams.get(player.teamId);
+          if (team) {
+            team.score = game.getPlayersArray()
+              .filter(p => p.teamId === player.teamId)
+              .reduce((sum, p) => sum + p.score, 0);
+          }
+        }
+
+        // Décider si le round continue ou se termine
+        const bothFound = roundState.artistFound && roundState.titleFound;
+        const isPartialAnswer = detailedAnswer && (artistCorrectNow !== titleCorrectNow); // XOR : exactement 1 vrai
+
+        if (bothFound || (!detailedAnswer && isCorrect)) {
+          // Round terminé : les 2 trouvés OU mode ancien avec bonne réponse
+          console.log('✅ Round completed - both found or simple correct answer');
+
           // Clear le timer de skip automatique
           if (game.roundTimer) {
             clearTimeout(game.roundTimer);
             game.roundTimer = null;
-            console.log('⏱️ Round timer cleared - correct answer found');
           }
 
-          // Bonne réponse : fin du round
-          const result = gameEngine.validateAnswer(game, targetPlayerId, isCorrect);
-          console.log('📊 Validation result (correct):', JSON.stringify(result));
+          // Utiliser gameEngine pour obtenir le résultat complet
+          const result = gameEngine.validateAnswer(game, targetPlayerId, true);
+
+          // Écraser les points avec notre calcul personnalisé
+          result.pointsAwarded = pointsAwarded;
 
           // Notifier tous les clients de la fin du round
           io.to(roomCode).emit('round_result', result);
 
+          // Réinitialiser l'état du round
+          game.currentRoundState = null;
+
           // Vérifier si le jeu doit se terminer
           checkAndEmitGameEnd(io, game, roomCode);
+
+        } else if (isPartialAnswer) {
+          // Réponse partielle : demander à l'hôte de décider
+          console.log('⚠️ Partial answer - waiting for host decision');
+
+          io.to(roomCode).emit('partial_answer_validated', {
+            playerId: targetPlayerId,
+            playerName: player.name,
+            points: pointsAwarded,
+            artistFound: roundState.artistFound,
+            titleFound: roundState.titleFound,
+            waitingForHost: true,
+            leaderboard: game.getLeaderboard(),
+            teamLeaderboard: game.getTeamLeaderboard()
+          });
+
         } else {
-          // Mauvaise réponse : appliquer points négatifs et continuer
+          // Les 2 faux ou mode ancien avec mauvaise réponse → continuer automatiquement
           console.log('❌ Wrong answer - resuming music for other players');
-
-          const round = game.currentRound;
-          const player = game.getPlayer(targetPlayerId);
-
-          let pointsAwarded = 0;
-          if (round && player) {
-            // Appliquer les points négatifs selon le mode
-            const { SCORING_CONFIGS } = require('../config/constants');
-            const scoringConfig = SCORING_CONFIGS[game.mode];
-            pointsAwarded = scoringConfig?.incorrect || -5;
-            player.score += pointsAwarded;
-
-            console.log(`⚠️ Wrong answer penalty: ${pointsAwarded} points for ${player.name}`);
-
-            // Retirer ce joueur de l'ordre de buzz (il ne peut plus buzzer ce round)
-            round.buzzOrder = round.buzzOrder.filter(b => b.playerId !== targetPlayerId);
-          }
 
           // Reprendre la musique
           io.to(roomCode).emit('resume_audio');
 
           // Notifier que la réponse était fausse mais le jeu continue
           io.to(roomCode).emit('wrong_answer_continue', {
-            playerName: player?.name,
+            playerName: player.name,
             pointsAwarded: pointsAwarded,
             leaderboard: game.getLeaderboard(),
             teamLeaderboard: game.getTeamLeaderboard(),
@@ -933,6 +1064,86 @@ function setupSocketHandlers(io) {
         console.error('❌ ERROR in validate_answer:', error.message);
         console.error('Stack:', error.stack);
         logger.error('Validation error', { error: error.message, stack: error.stack });
+      }
+    });
+
+    // ==================== CONTINUATION DE ROUND ====================
+    socket.on('continue_round', (data) => {
+      try {
+        const { roomCode } = data;
+        const game = games.get(roomCode);
+
+        if (!game || game.hostId !== socket.id) {
+          console.log('❌ Unauthorized continue_round');
+          return;
+        }
+
+        if (!game.currentRoundState) {
+          console.log('❌ No round state to continue');
+          return;
+        }
+
+        const roundState = game.currentRoundState;
+
+        console.log('▶️ Host decided to continue the round');
+
+        // Émettre à tous que le round continue
+        io.to(roomCode).emit('round_continuing', {
+          message: roundState.artistFound
+            ? 'Artiste trouvé ! Cherchez le titre'
+            : 'Titre trouvé ! Cherchez l\'artiste',
+          artistFound: roundState.artistFound,
+          titleFound: roundState.titleFound
+        });
+
+        // Reprendre la musique
+        io.to(roomCode).emit('resume_audio');
+
+      } catch (error) {
+        console.error('❌ ERROR in continue_round:', error.message);
+        logger.error('Continue round error', { error: error.message });
+      }
+    });
+
+    socket.on('end_round', (data) => {
+      try {
+        const { roomCode } = data;
+        const game = games.get(roomCode);
+
+        if (!game || game.hostId !== socket.id) {
+          console.log('❌ Unauthorized end_round');
+          return;
+        }
+
+        console.log('⏭️ Host decided to end the round');
+
+        // Clear le timer de skip automatique
+        if (game.roundTimer) {
+          clearTimeout(game.roundTimer);
+          game.roundTimer = null;
+        }
+
+        // Utiliser gameEngine pour obtenir le résultat final
+        const result = gameEngine.validateAnswer(game, null, false);
+
+        // Émettre le résultat final
+        io.to(roomCode).emit('round_result', {
+          ...result,
+          roundNumber: game.roundNumber,
+          leaderboard: game.getLeaderboard(),
+          teamLeaderboard: game.getTeamLeaderboard(),
+          message: 'Round terminé par l\'hôte'
+        });
+
+        // Réinitialiser l'état du round
+        game.currentRoundState = null;
+
+        // Vérifier si le jeu doit se terminer
+        checkAndEmitGameEnd(io, game, roomCode);
+
+      } catch (error) {
+        console.error('❌ ERROR in end_round:', error.message);
+        logger.error('End round error', { error: error.message });
       }
     });
 
