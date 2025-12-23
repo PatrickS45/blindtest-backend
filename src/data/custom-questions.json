@@ -1,0 +1,36 @@
+{
+  "version": "1.0",
+  "lastModified": "2025-01-01T00:00:00.000Z",
+  "questions": [
+    {
+      "id": "custom_example_1",
+      "question": "Quelle est la capitale de la France ?",
+      "correctAnswer": "Paris",
+      "wrongAnswers": ["Lyon", "Marseille", "Toulouse"],
+      "category": "geographie",
+      "difficulty": "facile",
+      "author": "System",
+      "createdAt": "2025-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "custom_example_2",
+      "question": "Combien de joueurs y a-t-il dans une équipe de football ?",
+      "correctAnswer": "11",
+      "wrongAnswers": ["10", "12", "9"],
+      "category": "sport",
+      "difficulty": "facile",
+      "author": "System",
+      "createdAt": "2025-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "custom_example_3",
+      "question": "En quelle année a eu lieu la Révolution française ?",
+      "correctAnswer": "1789",
+      "wrongAnswers": ["1776", "1804", "1815"],
+      "category": "histoire",
+      "difficulty": "normal",
+      "author": "System",
+      "createdAt": "2025-01-01T00:00:00.000Z"
+    }
+  ]
+}

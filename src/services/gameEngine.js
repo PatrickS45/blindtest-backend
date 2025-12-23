@@ -62,6 +62,16 @@ class GameEngine {
         round.setQCM(qcm);
         break;
 
+      case GAME_MODES.TRIVIA:
+        // Mode trivia : le track est déjà une question, générer le QCM directement
+        const triviaQCM = await qcmGenerator.generateQCM(
+          round.track,
+          game.playlist.tracks,
+          'trivia'
+        );
+        round.setQCM(triviaQCM);
+        break;
+
       case GAME_MODES.QUESTIONS_RAFALE:
         // Générer les indices
         const hints = qcmGenerator.generateHints(round.track);
