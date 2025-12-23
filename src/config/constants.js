@@ -9,14 +9,16 @@ module.exports = {
     QCM: 'qcm',
     QUESTIONS_RAFALE: 'questions_rafale',
     CHAUD_DEVANT: 'chaud_devant',
-    TUEURS_GAGES: 'tueurs_gages'
+    TUEURS_GAGES: 'tueurs_gages',
+    TRIVIA: 'trivia' // Mode quiz culture générale
   },
 
   // Types de questions QCM
   QCM_TYPES: {
     ARTIST: 'artist',
     TITLE: 'title',
-    YEAR: 'year'
+    YEAR: 'year',
+    TRIVIA: 'trivia' // Questions de culture générale
   },
 
   // Statuts de partie
@@ -46,7 +48,11 @@ module.exports = {
     soundEffectsVolume: 80,
     qcmType: 'artist',
     numberOfRounds: 10, // nombre de manches dans la partie
-    randomStart: true // démarrer la musique aléatoirement dans le morceau
+    randomStart: true, // démarrer la musique aléatoirement dans le morceau
+    triviaProvider: 'trivia', // provider de questions par défaut ('trivia', 'custom', ou 'mixed')
+    triviaCategory: null, // catégorie des questions (null = toutes)
+    triviaDifficulty: null, // difficulté (null, 'facile', 'normal', 'difficile')
+    triviaTimeout: 20 // temps pour répondre aux questions trivia (secondes)
   },
 
   // Configurations de scoring par mode
@@ -82,6 +88,11 @@ module.exports = {
       correct: 10,
       steal: 10,
       incorrect: -5
+    },
+    trivia: {
+      correct: 10,
+      incorrect: -3,
+      timeout: 0
     }
   },
 
@@ -126,6 +137,8 @@ module.exports = {
     SPOTIFY_ERROR: 'Erreur Spotify API',
     INSUFFICIENT_TRACKS: 'Playlist insuffisante (minimum 10 extraits requis)',
     MAX_PLAYERS_REACHED: 'Nombre maximum de joueurs atteint',
-    ALREADY_BUZZED: 'Un joueur a déjà buzzé'
+    ALREADY_BUZZED: 'Un joueur a déjà buzzé',
+    NO_QUESTIONS: 'Aucune question disponible',
+    TRIVIA_API_ERROR: 'Erreur lors de la récupération des questions'
   }
 };

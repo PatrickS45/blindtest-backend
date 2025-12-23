@@ -4,6 +4,7 @@
 const Game = require('../models/Game');
 const gameEngine = require('../services/gameEngine');
 const r2MusicService = require('../services/r2MusicService');
+const triviaService = require('../services/triviaService');
 const validators = require('../utils/validators');
 const logger = require('../utils/logger');
 const { GAME_MODES, LIMITS, ERRORS } = require('../config/constants');
@@ -700,6 +701,155 @@ function setupSocketHandlers(io) {
           callback(response);
         } else {
           socket.emit('playlist_loaded', response);
+        }
+      }
+    });
+
+    // ==================== CHARGER QUESTIONS TRIVIA ====================
+    socket.on('load_trivia_questions', async (data, callback) => {
+      try {
+        console.log('🧠 LOAD_TRIVIA_QUESTIONS event received:', JSON.stringify(data), 'socketId:', socket.id);
+        const { roomCode, provider, category, difficulty } = data;
+
+        const game = games.get(roomCode);
+        console.log('🎮 Game found:', !!game, 'Host check:', game ? (game.hostId === socket.id) : 'N/A');
+
+        if (!game || game.hostId !== socket.id) {
+          console.log('❌ Unauthorized load_trivia_questions - game:', !!game, 'socketId:', socket.id, 'hostId:', game?.hostId);
+          const response = { success: false, error: ERRORS.UNAUTHORIZED };
+          if (typeof callback === 'function') {
+            return callback(response);
+          }
+          return socket.emit('trivia_loaded', response);
+        }
+
+        logger.info('Loading trivia questions', {
+          roomCode,
+          provider,
+          category,
+          difficulty,
+          numberOfRounds: game.config.numberOfRounds
+        });
+
+        // Charger les questions via le triviaService
+        const questionsPlaylist = await triviaService.loadQuestions({
+          numberOfRounds: game.config.numberOfRounds,
+          triviaProvider: provider || game.config.triviaProvider || 'trivia',
+          triviaCategory: category || game.config.triviaCategory,
+          triviaDifficulty: difficulty || game.config.triviaDifficulty
+        });
+
+        console.log('✅ Questions retrieved:', questionsPlaylist.usableTracks, 'questions loaded');
+
+        // Sauvegarder dans la partie (utilise le même mécanisme que la playlist)
+        game.setPlaylist(questionsPlaylist);
+
+        // Notifier tous les clients
+        io.to(roomCode).emit('trivia_loaded', {
+          questionCount: questionsPlaylist.usableTracks,
+          provider: questionsPlaylist.provider,
+          category: category || 'Toutes catégories',
+          difficulty: difficulty || 'Toutes difficultés'
+        });
+
+        const response = {
+          success: true,
+          questions: {
+            count: questionsPlaylist.usableTracks,
+            provider: questionsPlaylist.provider,
+            category: category || null,
+            difficulty: difficulty || null
+          }
+        };
+
+        if (typeof callback === 'function') {
+          callback(response);
+        }
+
+      } catch (error) {
+        console.error('❌ TRIVIA LOAD ERROR:', error.message);
+        console.error('Stack:', error.stack);
+
+        logger.error('Failed to load trivia questions', {
+          error: error.message,
+          stack: error.stack,
+          roomCode: data.roomCode
+        });
+
+        const response = {
+          success: false,
+          error: ERRORS.TRIVIA_API_ERROR
+        };
+
+        if (typeof callback === 'function') {
+          callback(response);
+        } else {
+          socket.emit('trivia_loaded', response);
+        }
+      }
+    });
+
+    // ==================== GET TRIVIA CATEGORIES ====================
+    socket.on('get_trivia_categories', async (data, callback) => {
+      try {
+        const { provider } = data || {};
+        const categories = await triviaService.getCategories(provider);
+
+        const response = {
+          success: true,
+          categories
+        };
+
+        if (typeof callback === 'function') {
+          callback(response);
+        } else {
+          socket.emit('trivia_categories', response);
+        }
+
+      } catch (error) {
+        logger.error('Failed to get trivia categories', { error: error.message });
+
+        const response = {
+          success: false,
+          error: error.message
+        };
+
+        if (typeof callback === 'function') {
+          callback(response);
+        } else {
+          socket.emit('trivia_categories', response);
+        }
+      }
+    });
+
+    // ==================== GET TRIVIA PROVIDERS ====================
+    socket.on('get_trivia_providers', async (data, callback) => {
+      try {
+        const providers = await triviaService.getProviders();
+
+        const response = {
+          success: true,
+          providers
+        };
+
+        if (typeof callback === 'function') {
+          callback(response);
+        } else {
+          socket.emit('trivia_providers', response);
+        }
+
+      } catch (error) {
+        logger.error('Failed to get trivia providers', { error: error.message });
+
+        const response = {
+          success: false,
+          error: error.message
+        };
+
+        if (typeof callback === 'function') {
+          callback(response);
+        } else {
+          socket.emit('trivia_providers', response);
         }
       }
     });

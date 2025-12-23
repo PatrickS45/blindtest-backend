@@ -1,7 +1,8 @@
 // src/services/qcmGenerator.js
-// Générateur automatique de QCM à partir des métadonnées Spotify
+// Générateur automatique de QCM à partir des métadonnées Spotify ou questions trivia
 
 const spotifyService = require('./spotifyService');
+const triviaService = require('./triviaService');
 const { QCM_TYPES, GENERIC_ARTISTS_BY_DECADE } = require('../config/constants');
 const logger = require('../utils/logger');
 
@@ -172,13 +173,20 @@ class QCMGenerator {
 
   /**
    * Point d'entrée principal pour générer un QCM
-   * @param {Object} track
+   * @param {Object} track - Track Spotify ou question trivia
    * @param {Array} playlistTracks
-   * @param {string} questionType - 'artist', 'title', 'year'
+   * @param {string} questionType - 'artist', 'title', 'year', 'trivia'
    * @returns {Promise<Object>}
    */
   async generateQCM(track, playlistTracks, questionType = QCM_TYPES.ARTIST) {
     try {
+      // Si c'est une question trivia (détectée par la présence de la méthode toQCMFormat)
+      if (questionType === QCM_TYPES.TRIVIA || (track && typeof track.toQCMFormat === 'function')) {
+        logger.debug('Generating trivia QCM', { questionId: track.id });
+        return triviaService.generateQCM(track);
+      }
+
+      // Sinon, utiliser la logique musicale classique
       switch (questionType) {
         case QCM_TYPES.ARTIST:
           return await this.generateArtistQCM(track, playlistTracks);
@@ -195,7 +203,7 @@ class QCMGenerator {
       }
     } catch (error) {
       logger.error('Failed to generate QCM', {
-        trackId: track.id,
+        trackId: track?.id,
         questionType,
         error: error.message
       });
