@@ -106,7 +106,8 @@ app.get('/', (req, res) => {
       'qcm',
       'questions_rafale',
       'chaud_devant',
-      'tueurs_gages'
+      'tueurs_gages',
+      'trivia'
     ]
   });
 });
