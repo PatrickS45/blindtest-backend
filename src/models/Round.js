@@ -2,6 +2,7 @@
 // Modèle de manche/round
 
 const crypto = require('crypto');
+const { GAME_MODES } = require('../config/constants');
 
 class Round {
   constructor(mode, track, config) {
@@ -174,14 +175,25 @@ class Round {
     const data = {
       roundId: this.roundId,
       mode: this.mode,
-      track: {
+      config: this.config
+    };
+
+    // Pour TRIVIA mode, pas de track audio
+    if (this.mode === GAME_MODES.TRIVIA) {
+      data.track = {
+        id: this.track.id,
+        category: this.track.category,
+        difficulty: this.track.difficulty
+      };
+    } else {
+      // Pour les modes musicaux
+      data.track = {
         id: this.track.id,
         previewUrl: this.track.preview_url,
         duration: this.config.extractDuration,
         startOffset: this.startOffset // Offset de démarrage en secondes
-      },
-      config: this.config
-    };
+      };
+    }
 
     // Ajouter le QCM si présent (sans dévoiler la réponse)
     if (this.qcm) {
