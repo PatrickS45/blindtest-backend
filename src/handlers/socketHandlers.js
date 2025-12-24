@@ -922,24 +922,28 @@ function setupSocketHandlers(io) {
           ...roundData
         });
 
-        // IMPORTANT: Envoyer aussi play_track pour la compatibilité frontend
-        // Si randomStart est activé, générer un temps de départ aléatoire dans le morceau
-        let startTime = 0;
-        if (game.config.randomStart) {
-          // Générer un temps de départ aléatoire entre 0 et 60 secondes
-          // (en supposant que les morceaux font au moins 60s + extractDuration)
-          startTime = Math.floor(Math.random() * 60);
-          console.log('🎲 Random start time:', startTime, 'seconds');
-        }
+        // IMPORTANT: Envoyer play_track UNIQUEMENT pour les modes musicaux (pas TRIVIA)
+        if (game.mode !== GAME_MODES.TRIVIA) {
+          // Si randomStart est activé, générer un temps de départ aléatoire dans le morceau
+          let startTime = 0;
+          if (game.config.randomStart) {
+            // Générer un temps de départ aléatoire entre 0 et 60 secondes
+            // (en supposant que les morceaux font au moins 60s + extractDuration)
+            startTime = Math.floor(Math.random() * 60);
+            console.log('🎲 Random start time:', startTime, 'seconds');
+          }
 
-        console.log('🎵 Emitting play_track - URL:', round.track.preview_url);
-        io.to(roomCode).emit('play_track', {
-          previewUrl: round.track.preview_url,
-          duration: round.config.extractDuration,
-          startTime: startTime,
-          title: round.track.name,
-          artist: round.track.artists?.[0]?.name || 'Unknown'
-        });
+          console.log('🎵 Emitting play_track - URL:', round.track.preview_url);
+          io.to(roomCode).emit('play_track', {
+            previewUrl: round.track.preview_url,
+            duration: round.config.extractDuration,
+            startTime: startTime,
+            title: round.track.name,
+            artist: round.track.artists?.[0]?.name || 'Unknown'
+          });
+        } else {
+          console.log('🧠 TRIVIA mode - skipping play_track emission');
+        }
 
         // Clear previous timer if exists
         if (game.roundTimer) {
