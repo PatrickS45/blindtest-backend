@@ -917,6 +917,7 @@ function setupSocketHandlers(io) {
         });
         io.to(roomCode).emit('round_started', {
           roundNumber: game.roundNumber,
+          mode: game.mode,
           playMode: game.playMode,
           ...roundData
         });
