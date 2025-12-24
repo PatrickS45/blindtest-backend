@@ -239,10 +239,10 @@ class Game {
     const randomIndex = availableIndices[Math.floor(Math.random() * availableIndices.length)];
     this.usedTrackIndices.add(randomIndex);
 
-    return {
-      ...this.playlist.tracks[randomIndex],
-      index: randomIndex
-    };
+    // Retourner le track directement pour préserver les méthodes du prototype
+    const track = this.playlist.tracks[randomIndex];
+    track.index = randomIndex;
+    return track;
   }
 
   /**
