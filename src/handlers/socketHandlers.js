@@ -1348,7 +1348,7 @@ function setupSocketHandlers(io) {
     });
 
     // ==================== VALIDATION QCM (AUTO) ====================
-    socket.on('validate_qcm', (data) => {
+    socket.on('validate_qcm', async (data) => {
       try {
         const { roomCode } = data;
 
@@ -1362,7 +1362,42 @@ function setupSocketHandlers(io) {
         io.to(roomCode).emit('qcm_result', result);
 
         // Vérifier si le jeu doit se terminer
-        checkAndEmitGameEnd(io, game, roomCode);
+        const gameEnded = checkAndEmitGameEnd(io, game, roomCode);
+
+        // Pour TRIVIA mode : lancer automatiquement le round suivant après 3 secondes
+        if (!gameEnded && game.mode === GAME_MODES.TRIVIA && !game.hasReachedMaxRounds()) {
+          console.log('⏱️ [TRIVIA] Auto-starting next round in 3 seconds...');
+
+          setTimeout(async () => {
+            try {
+              // Vérifier que la partie existe toujours
+              const currentGame = games.get(roomCode);
+              if (!currentGame) {
+                console.log('❌ [TRIVIA] Game no longer exists, skipping auto-start');
+                return;
+              }
+
+              console.log('🚀 [TRIVIA] Auto-starting next round');
+
+              // Démarrer le round suivant
+              const round = await gameEngine.startRound(currentGame);
+              const roundData = round.toClientData(true);
+
+              io.to(roomCode).emit('round_started', {
+                roundNumber: currentGame.roundNumber,
+                mode: currentGame.mode,
+                playMode: currentGame.playMode,
+                ...roundData
+              });
+
+              console.log('✅ [TRIVIA] Next round auto-started:', currentGame.roundNumber);
+
+            } catch (error) {
+              console.error('❌ [TRIVIA] Auto-start error:', error.message);
+              logger.error('Failed to auto-start TRIVIA round', { error: error.message, roomCode });
+            }
+          }, 3000); // 3 secondes pour afficher les résultats
+        }
 
       } catch (error) {
         logger.error('QCM validation error', { error: error.message });
