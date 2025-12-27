@@ -265,7 +265,15 @@ function setupSocketHandlers(io) {
             teams: Array.from(game.teams.values()),
             mode: game.mode,
             playMode: game.playMode,
-            config: game.config
+            config: game.config,
+            status: game.status,
+            roundNumber: game.roundNumber,
+            currentRound: game.currentRound ? {
+              roundId: game.currentRound.roundId,
+              mode: game.currentRound.mode,
+              isActive: !game.currentRound.endTime,
+              buzzOrder: game.currentRound.buzzOrder
+            } : null
           };
 
           if (typeof callback === 'function') {
@@ -301,7 +309,15 @@ function setupSocketHandlers(io) {
           teams: Array.from(game.teams.values()),
           mode: game.mode,
           playMode: game.playMode,
-          config: game.config
+          config: game.config,
+          status: game.status,
+          roundNumber: game.roundNumber,
+          currentRound: game.currentRound ? {
+            roundId: game.currentRound.roundId,
+            mode: game.currentRound.mode,
+            isActive: !game.currentRound.endTime,
+            buzzOrder: game.currentRound.buzzOrder
+          } : null
         };
 
         console.log('✅ Player join successful, response:', JSON.stringify(response));
@@ -760,7 +776,14 @@ function setupSocketHandlers(io) {
         const roundData = round.toClientData(true); // Cacher la réponse
 
         // Notifier tous les clients
-        console.log('📡 Emitting round_started to room:', roomCode);
+        const connectedPlayers = game.getPlayersArray().filter(p => p.isConnected);
+        console.log('📡 ÉMISSION round_started:', {
+          roomCode: roomCode,
+          roundNumber: game.roundNumber,
+          totalPlayers: game.players.size,
+          connectedPlayers: connectedPlayers.length,
+          playerNames: connectedPlayers.map(p => p.name)
+        });
         console.log('🎮 MODE DE JEU:', {
           mode: game.mode,
           playMode: game.playMode,
