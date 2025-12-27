@@ -104,6 +104,11 @@ function checkAndEmitGameEnd(io, game, roomCode) {
  */
 function setupSocketHandlers(io) {
   io.on('connection', (socket) => {
+    console.log('🔌 CLIENT CONNECTED:', {
+      socketId: socket.id,
+      transport: socket.conn.transport.name,
+      timestamp: new Date().toISOString()
+    });
     logger.info('Client connected', { socketId: socket.id });
 
     // ==================== CRÉATION DE PARTIE ====================
@@ -270,7 +275,14 @@ function setupSocketHandlers(io) {
         }
 
         // Nouveau joueur
-        console.log('✅ Adding new player:', sanitizedName, 'to game:', roomCode);
+        console.log('➕ NOUVEAU JOUEUR:', {
+          name: sanitizedName,
+          socketId: socket.id,
+          roomCode: roomCode,
+          currentPlayerCount: game.players.size,
+          maxPlayers: LIMITS.MAX_PLAYERS
+        });
+
         const player = game.addPlayer(socket.id, sanitizedName);
         socket.join(roomCode);
 
@@ -301,13 +313,19 @@ function setupSocketHandlers(io) {
         }
 
       } catch (error) {
+        console.error('❌ ERROR in join_game:', {
+          error: error.message,
+          stack: error.stack,
+          roomCode: data?.roomCode,
+          playerName: data?.playerName
+        });
         logger.error('Failed to join game', { error: error.message, stack: error.stack });
         const response = { success: false, error: error.message };
 
         if (typeof callback === 'function') {
-          callback(response);
+          return callback(response);
         } else {
-          socket.emit('game_joined', response);
+          return socket.emit('game_joined', response);
         }
       }
     });
@@ -1087,8 +1105,14 @@ function setupSocketHandlers(io) {
     });
 
     // ==================== DÉCONNEXION ====================
-    socket.on('disconnect', () => {
-      logger.info('Client disconnected', { socketId: socket.id });
+    socket.on('disconnect', (reason) => {
+      console.log('🔌 CLIENT DISCONNECTED:', {
+        socketId: socket.id,
+        reason: reason,
+        transport: socket.conn?.transport?.name,
+        timestamp: new Date().toISOString()
+      });
+      logger.info('Client disconnected', { socketId: socket.id, reason });
 
       // Parcourir toutes les parties
       games.forEach((game, roomCode) => {
