@@ -849,10 +849,26 @@ function setupSocketHandlers(io) {
         const { roomCode } = data;
 
         const game = games.get(roomCode);
-        if (!game) return;
+        if (!game) {
+          console.log('⚠️ Buzz ignored - game not found:', roomCode);
+          return;
+        }
 
         const player = game.getPlayer(socket.id);
-        if (!player) return;
+        if (!player) {
+          console.log('⚠️ Buzz ignored - player not found:', socket.id);
+          return;
+        }
+
+        console.log('📥 BUZZ REÇU:', {
+          playerId: socket.id,
+          playerName: player.name,
+          roomCode: roomCode,
+          mode: game.mode,
+          roundActive: !!game.currentRound,
+          roundEnded: game.currentRound?.endTime ? true : false,
+          timestamp: Date.now()
+        });
 
         // Vérifier qu'il y a un round actif et non terminé
         if (!game.currentRound || game.currentRound.endTime) {
@@ -867,7 +883,14 @@ function setupSocketHandlers(io) {
           playerId: socket.id,
           playerName: player.name,
           position: buzzData.position,
-          mode: game.mode
+          mode: game.mode,
+          timestamp: Date.now()
+        });
+
+        // Confirmation immédiate au joueur qui a buzzé
+        socket.emit('buzz_confirmed', {
+          position: buzzData.position,
+          timestamp: Date.now()
         });
 
         // Notifier tous les clients
@@ -882,17 +905,22 @@ function setupSocketHandlers(io) {
       } catch (error) {
         // Gérer les cas où le buzz est rejeté
         if (error.message === 'Déjà buzzé' || error.message === 'Quelqu\'un a déjà buzzé') {
+          const player = game.getPlayer(socket.id);
           console.log('⚠️ BUZZ REJETÉ:', {
             playerId: socket.id,
-            playerName: player.name,
-            reason: error.message
+            playerName: player?.name,
+            reason: error.message,
+            mode: game.mode,
+            currentBuzzCount: game.currentRound?.buzzOrder?.length || 0,
+            timestamp: Date.now()
           });
           // Informer le joueur que son buzz a été rejeté
           socket.emit('buzz_rejected', {
             reason: error.message,
             message: error.message === 'Déjà buzzé'
               ? 'Vous avez déjà buzzé !'
-              : 'Quelqu\'un a buzzé avant vous !'
+              : 'Quelqu\'un a buzzé avant vous !',
+            timestamp: Date.now()
           });
         } else {
           logger.error('Buzz error', { error: error.message, stack: error.stack });
