@@ -105,6 +105,11 @@ function checkAndEmitGameEnd(io, game, roomCode) {
  */
 function setupSocketHandlers(io) {
   io.on('connection', (socket) => {
+    console.log('🔌 CLIENT CONNECTED:', {
+      socketId: socket.id,
+      transport: socket.conn.transport.name,
+      timestamp: new Date().toISOString()
+    });
     logger.info('Client connected', { socketId: socket.id });
 
     // ==================== CRÉATION DE PARTIE ====================
@@ -269,7 +274,15 @@ function setupSocketHandlers(io) {
             teams: Array.from(game.teams.values()),
             mode: game.mode,
             playMode: game.playMode,
-            config: game.config
+            config: game.config,
+            status: game.status,
+            roundNumber: game.roundNumber,
+            currentRound: game.currentRound ? {
+              roundId: game.currentRound.roundId,
+              mode: game.currentRound.mode,
+              isActive: !game.currentRound.endTime,
+              buzzOrder: game.currentRound.buzzOrder
+            } : null
           };
 
           if (typeof callback === 'function') {
@@ -279,7 +292,14 @@ function setupSocketHandlers(io) {
         }
 
         // Nouveau joueur
-        console.log('✅ Adding new player:', sanitizedName, 'to game:', roomCode);
+        console.log('➕ NOUVEAU JOUEUR:', {
+          name: sanitizedName,
+          socketId: socket.id,
+          roomCode: roomCode,
+          currentPlayerCount: game.players.size,
+          maxPlayers: LIMITS.MAX_PLAYERS
+        });
+
         const player = game.addPlayer(socket.id, sanitizedName);
         socket.join(roomCode);
 
@@ -298,7 +318,15 @@ function setupSocketHandlers(io) {
           teams: Array.from(game.teams.values()),
           mode: game.mode,
           playMode: game.playMode,
-          config: game.config
+          config: game.config,
+          status: game.status,
+          roundNumber: game.roundNumber,
+          currentRound: game.currentRound ? {
+            roundId: game.currentRound.roundId,
+            mode: game.currentRound.mode,
+            isActive: !game.currentRound.endTime,
+            buzzOrder: game.currentRound.buzzOrder
+          } : null
         };
 
         console.log('✅ Player join successful, response:', JSON.stringify(response));
@@ -310,13 +338,19 @@ function setupSocketHandlers(io) {
         }
 
       } catch (error) {
+        console.error('❌ ERROR in join_game:', {
+          error: error.message,
+          stack: error.stack,
+          roomCode: data?.roomCode,
+          playerName: data?.playerName
+        });
         logger.error('Failed to join game', { error: error.message, stack: error.stack });
         const response = { success: false, error: error.message };
 
         if (typeof callback === 'function') {
-          callback(response);
+          return callback(response);
         } else {
-          socket.emit('game_joined', response);
+          return socket.emit('game_joined', response);
         }
       }
     });
@@ -909,7 +943,14 @@ function setupSocketHandlers(io) {
         const roundData = round.toClientData(true); // Cacher la réponse
 
         // Notifier tous les clients
-        console.log('📡 Emitting round_started to room:', roomCode);
+        const connectedPlayers = game.getPlayersArray().filter(p => p.isConnected);
+        console.log('📡 ÉMISSION round_started:', {
+          roomCode: roomCode,
+          roundNumber: game.roundNumber,
+          totalPlayers: game.players.size,
+          connectedPlayers: connectedPlayers.length,
+          playerNames: connectedPlayers.map(p => p.name)
+        });
         console.log('🎮 MODE DE JEU:', {
           mode: game.mode,
           playMode: game.playMode,
@@ -1003,10 +1044,26 @@ function setupSocketHandlers(io) {
         const { roomCode } = data;
 
         const game = games.get(roomCode);
-        if (!game) return;
+        if (!game) {
+          console.log('⚠️ Buzz ignored - game not found:', roomCode);
+          return;
+        }
 
         const player = game.getPlayer(socket.id);
-        if (!player) return;
+        if (!player) {
+          console.log('⚠️ Buzz ignored - player not found:', socket.id);
+          return;
+        }
+
+        console.log('📥 BUZZ REÇU:', {
+          playerId: socket.id,
+          playerName: player.name,
+          roomCode: roomCode,
+          mode: game.mode,
+          roundActive: !!game.currentRound,
+          roundEnded: game.currentRound?.endTime ? true : false,
+          timestamp: Date.now()
+        });
 
         // Vérifier qu'il y a un round actif et non terminé
         if (!game.currentRound || game.currentRound.endTime) {
@@ -1026,6 +1083,20 @@ function setupSocketHandlers(io) {
         // Enregistrer le buzz
         const buzzData = gameEngine.handleBuzz(game, socket.id, player.name);
 
+        console.log('🔔 BUZZ ACCEPTÉ:', {
+          playerId: socket.id,
+          playerName: player.name,
+          position: buzzData.position,
+          mode: game.mode,
+          timestamp: Date.now()
+        });
+
+        // Confirmation immédiate au joueur qui a buzzé
+        socket.emit('buzz_confirmed', {
+          position: buzzData.position,
+          timestamp: Date.now()
+        });
+
         // Notifier tous les clients
         io.to(roomCode).emit('buzz_locked', {
           ...buzzData,
@@ -1036,7 +1107,28 @@ function setupSocketHandlers(io) {
         io.to(roomCode).emit('stop_music');
 
       } catch (error) {
-        logger.error('Buzz error', { error: error.message });
+        // Gérer les cas où le buzz est rejeté
+        if (error.message === 'Déjà buzzé' || error.message === 'Quelqu\'un a déjà buzzé') {
+          const player = game.getPlayer(socket.id);
+          console.log('⚠️ BUZZ REJETÉ:', {
+            playerId: socket.id,
+            playerName: player?.name,
+            reason: error.message,
+            mode: game.mode,
+            currentBuzzCount: game.currentRound?.buzzOrder?.length || 0,
+            timestamp: Date.now()
+          });
+          // Informer le joueur que son buzz a été rejeté
+          socket.emit('buzz_rejected', {
+            reason: error.message,
+            message: error.message === 'Déjà buzzé'
+              ? 'Vous avez déjà buzzé !'
+              : 'Quelqu\'un a buzzé avant vous !',
+            timestamp: Date.now()
+          });
+        } else {
+          logger.error('Buzz error', { error: error.message, stack: error.stack });
+        }
       }
     });
 
@@ -1465,8 +1557,14 @@ function setupSocketHandlers(io) {
     });
 
     // ==================== DÉCONNEXION ====================
-    socket.on('disconnect', () => {
-      logger.info('Client disconnected', { socketId: socket.id });
+    socket.on('disconnect', (reason) => {
+      console.log('🔌 CLIENT DISCONNECTED:', {
+        socketId: socket.id,
+        reason: reason,
+        transport: socket.conn?.transport?.name,
+        timestamp: new Date().toISOString()
+      });
+      logger.info('Client disconnected', { socketId: socket.id, reason });
 
       // Parcourir toutes les parties
       games.forEach((game, roomCode) => {
